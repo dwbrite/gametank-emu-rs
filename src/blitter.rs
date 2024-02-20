@@ -1,4 +1,4 @@
-use crate::gametank::Bus;
+use crate::gametank_bus::Bus;
 
 #[derive(Debug)]
 pub struct Blitter {
@@ -45,7 +45,7 @@ impl Blitter {
     }
 
     pub fn cycle(&mut self, bus: &mut Bus) {
-        // log::info!("{:?}", self);
+        log::trace!(target: "blitter", "{:?}", self);
 
         // load y at blitter start
         if !self.blitting && bus.blitter.start != 0 {
@@ -57,8 +57,7 @@ impl Blitter {
             self.color_fill = bus.system_control.dma_flags.dma_colorfill_enable();
             self.blitting = true;
 
-            // log::info!("starting {}x{} blit at ({}, {}); color mode {}", bus.blitter.width, bus.blitter.height, bus.blitter.vx, bus.blitter.vy, bus.system_control.dma_flags.dma_colorfill_enable());
-            // println!("starting {}x{} blit at ({}, {}); color mode {}", bus.blitter.width, bus.blitter.height, bus.blitter.vx, bus.blitter.vy, bus.system_control.dma_flags.dma_colorfill_enable());
+            log::trace!(target: "blitter", "starting {}x{} blit at ({}, {}); color mode {}", bus.blitter.width, bus.blitter.height, bus.blitter.vx, bus.blitter.vy, bus.system_control.dma_flags.dma_colorfill_enable());
         }
 
         if !self.blitting {
@@ -69,7 +68,7 @@ impl Blitter {
         self.dst_x = bus.blitter.vx;
         self.width = bus.blitter.width;
         //
-        // log::info!("starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
+        log::trace!(target: "blitter", "starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
 
         if self.offset_x >= self.width {
             self.offset_x = 0;
@@ -79,8 +78,7 @@ impl Blitter {
         if self.offset_y >= self.height {
             self.offset_y = 0;
             self.blitting = false;
-            // log::info!("blit complete");
-            // println!("blit complete");
+            // log::trace!("blit complete");
             if bus.system_control.dma_flags.dma_irq() {
                 self.irq_trigger = true;
             }
@@ -89,8 +87,7 @@ impl Blitter {
 
         // if blitter is disabled, counters continue but no write occurs
         if !bus.system_control.dma_flags.dma_enable() {
-            // log::warn!("blit cycle skipped; dma access disabled. dma flags: {:08b}", bus.system_control.dma_flags.0);
-            // println!("blit cycle skipped; dma access disabled. dma flags: {:08b}", bus.system_control.dma_flags.0);
+            log::trace!(target: "blitter", "blit cycle skipped; dma access disabled. dma flags: {:08b}", bus.system_control.dma_flags.0);
             self.offset_x += 1;
             return
         }
@@ -117,7 +114,7 @@ impl Blitter {
 
             let blit_src_x = (src_x_mod + self.offset_x) as usize;
             let blit_src_y = (src_y_mod + self.offset_y) as usize;
-            // log::info!("starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
+            log::trace!(target: "blitter", "starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
 
             bus.vram_banks[vram_page][quadrant][blit_src_x + blit_src_y*128]
         };

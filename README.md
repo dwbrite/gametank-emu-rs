@@ -1,4 +1,4 @@
-cargo install miniserve wasm-bindgen just
+cargo install miniserve wasm-bindgen-cli just
 
 rustup target add wasm32-unknown-unknown
 
