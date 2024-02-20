@@ -43,6 +43,8 @@ use crate::helpers::*;
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]
 #[cfg(target_arch = "wasm32")]
 pub fn wasm_main() {
+    use winit::platform::web::{WindowBuilderExtWebSys};
+
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init().unwrap();
     log::info!("console logger started.");
@@ -50,9 +52,18 @@ pub fn wasm_main() {
     let window = window().expect("should have a Window");
     let document = window.document().expect("should have a Document");
     let canvas = document.get_element_by_id("gt-canvas").expect("should have a canvas element");
-    let canvas: HtmlCanvasElement = canvas.dyn_into::<HtmlCanvasElement>().unwrap();
+    let canvas: HtmlCanvasElement = canvas.dyn_into::<HtmlCanvasElement>().expect("failed to transmute canvas element");
 
-    wasm_init(Some(canvas))
+    let canv = canvas.clone();
+    let surface_size = LogicalSize::new(canv.width() as f64, canv.height() as f64);
+
+    let builder = winit::window::WindowBuilder::new()
+        .with_title("GameTank!")
+        .with_inner_size(LogicalSize::new(WIDTH*2, HEIGHT*2))
+        .with_min_inner_size(LogicalSize::new(WIDTH, HEIGHT))
+        .with_canvas(Some(canvas));
+
+    run(builder, surface_size);
 }
 
 pub fn main() {
@@ -62,25 +73,7 @@ pub fn main() {
         .init()
         .unwrap();
     log::info!("stdout logger started");
-    init();
-}
 
-#[cfg(target_arch = "wasm32")]
-fn wasm_init(canvas: Option<HtmlCanvasElement>) {
-    use winit::platform::web::{WindowBuilderExtWebSys};
-    let canv = canvas.clone().unwrap();
-    let surface_size = LogicalSize::new(canv.width() as f64, canv.height() as f64);
-
-    let builder = winit::window::WindowBuilder::new()
-        .with_title("GameTank!")
-        .with_inner_size(LogicalSize::new(WIDTH*2, HEIGHT*2))
-        .with_min_inner_size(LogicalSize::new(WIDTH, HEIGHT))
-        .with_canvas(canvas);
-
-    run(builder, surface_size);
-}
-
-fn init() {
     let surface_size = LogicalSize::new((WIDTH*2) as f64, (HEIGHT*2) as f64);
 
     let builder = winit::window::WindowBuilder::new()
@@ -112,11 +105,11 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
     let mut blitter = Blitter::default();
     log::trace!(target: "bus_init", "{:?}", bus);
 
-    let mut last_cpu_tick = get_current_time();
+    let mut last_cpu_tick_ms = get_now_ms();
     let cpu_frequency_hz = 3_579_545.0; // Precise frequency
     let ns_per_cycle = 1_000_000_000.0 / cpu_frequency_hz; // Nanoseconds per cycle
 
-    let mut last_render_time = get_current_time();
+    let mut last_render_time = get_now_ms();
 
     event_loop.run(move |event, elwt| {
         match event {
@@ -128,12 +121,12 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
                 elwt.exit();
             },
             Event::AboutToWait => {
-                let now = get_current_time();
-                let elapsed_ms = now - last_cpu_tick;
+                let now_ms = get_now_ms();
+                let elapsed_ms = now_ms - last_cpu_tick_ms;
                 let elapsed_ns = elapsed_ms * 1000000.0;
                 let cycles_to_emulate = (elapsed_ns / ns_per_cycle) as u64;
 
-                // log::info!("{} ms elapsed", elapsed_ms);
+                log::trace!("{} ms elapsed", elapsed_ms);
 
                 for _ in 0..cycles_to_emulate {
                     // print_next_instruction(&mut cpu, &mut bus);
@@ -145,11 +138,11 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
                 }
 
                 if cycles_to_emulate > 0 {
-                    last_cpu_tick = now;
+                    last_cpu_tick_ms = now_ms;
                 }
 
-                if (now - last_render_time) >= 16.67 { // 16.67ms
-                    last_render_time = now;
+                if (now_ms - last_render_time) >= 16.67 { // 16.67ms
+                    last_render_time = now_ms;
                     //
                     let fb = bus.read_full_framebuffer();
                     //

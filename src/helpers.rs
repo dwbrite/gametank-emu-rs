@@ -1,12 +1,7 @@
-use std::time::Instant;
 use w65c02s::W65C02S;
 use crate::Bus;
 
-
-#[cfg(not(target_arch = "wasm32"))]
-static mut START_INSTANT: Option<Instant> = None;
-
-pub fn get_current_time() -> f64 {
+pub fn get_now_ms() -> f64 {
     #[cfg(target_arch = "wasm32")]
     {
         let window = web_sys::window().expect("should have a window in this context");
@@ -19,6 +14,9 @@ pub fn get_current_time() -> f64 {
 
     #[cfg(not(target_arch = "wasm32"))]
     unsafe {
+        use std::time::Instant;
+        static mut START_INSTANT: Option<Instant> = None;
+
         if START_INSTANT.is_none() {
             START_INSTANT = Some(Instant::now());
         }
@@ -26,6 +24,7 @@ pub fn get_current_time() -> f64 {
     }
 }
 
+// TODO: return a string instead of printing
 pub fn _print_next_instruction(cpu: &mut W65C02S, bus: &mut Bus) {
     let program_counter = cpu.get_pc();
     let opcode = bus.read_byte(program_counter);
