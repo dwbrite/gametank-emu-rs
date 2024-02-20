@@ -13,7 +13,9 @@ mod gametank_bus;
 mod helpers;
 
 use std::rc::Rc;
+use log::LevelFilter;
 use pixels::{PixelsBuilder, SurfaceTexture};
+use simple_logger::SimpleLogger;
 use w65c02s::W65C02S;
 use winit::{
     event::{Event, WindowEvent},
@@ -27,7 +29,10 @@ const WIDTH: u32 = 128;
 const HEIGHT: u32 = 128;
 
 #[cfg(target_arch = "wasm32")]
-use web_sys::HtmlCanvasElement;
+use web_sys::{ HtmlCanvasElement, window };
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 
 use winit::window::WindowBuilder;
 use crate::blitter::Blitter;
@@ -37,25 +42,31 @@ use crate::helpers::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]
 #[cfg(target_arch = "wasm32")]
-pub fn initialize() {
+pub fn wasm_main() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init().unwrap();
-    log::info!("RRR loaded.");
-}
+    log::info!("console logger started.");
 
+    let window = window().expect("should have a Window");
+    let document = window.document().expect("should have a Document");
+    let canvas = document.get_element_by_id("gt-canvas").expect("should have a canvas element");
+    let canvas: HtmlCanvasElement = canvas.dyn_into::<HtmlCanvasElement>().unwrap();
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen)]
-#[cfg(target_arch = "wasm32")]
-pub fn play(canvas: Option<HtmlCanvasElement>) {
-    wasm_bindgen_futures::spawn_local(wasm_init(canvas));
+    wasm_init(Some(canvas))
 }
 
 pub fn main() {
+    SimpleLogger::new()
+        .with_colors(true)
+        .with_level(LevelFilter::Info)
+        .init()
+        .unwrap();
+    log::info!("stdout logger started");
     init();
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn wasm_init(canvas: Option<HtmlCanvasElement>) {
+fn wasm_init(canvas: Option<HtmlCanvasElement>) {
     use winit::platform::web::{WindowBuilderExtWebSys};
     let canv = canvas.clone().unwrap();
     let surface_size = LogicalSize::new(canv.width() as f64, canv.height() as f64);
@@ -99,8 +110,7 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
     cpu.step(&mut bus); // take one initial step, to get through the reset vector
 
     let mut blitter = Blitter::default();
-
-    log::info!("{:?}", bus);
+    log::trace!(target: "bus_init", "{:?}", bus);
 
     let mut last_cpu_tick = get_current_time();
     let cpu_frequency_hz = 3_579_545.0; // Precise frequency
