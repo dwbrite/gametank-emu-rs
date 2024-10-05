@@ -7,7 +7,7 @@ edition = "2021"
 lto = true
 
 [dependencies]
-pixels = "0.13.0"
+pixels = "0.14.0"
 winit = { version = "0.29.10", features = ["rwh_05"]}
 winit_input_helper = "0.15.3"
 log = { version = "0.4.20", features = [] }

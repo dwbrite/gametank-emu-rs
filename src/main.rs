@@ -1,12 +1,6 @@
 #![feature(exclusive_range_pattern)]
 #![allow(clippy::disallowed_methods, clippy::single_match)]
 
-extern crate wee_alloc;
-
-#[cfg(target_arch = "wasm32")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
 mod color_map;
 mod blitter;
 mod gametank_bus;
@@ -88,6 +82,43 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::closure::Closure;
+        use wasm_bindgen::JsCast;
+        use web_sys::window;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let event_loop_proxy = event_loop.create_proxy();
+
+        let f = Rc::new(RefCell::new(None::<Closure<dyn FnMut()>>));
+        let g = f.clone();
+
+        *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+            event_loop_proxy.send_event(()).unwrap();
+
+            window()
+                .unwrap()
+                .request_animation_frame(
+                    f.borrow().as_ref().unwrap().as_ref().unchecked_ref(),
+                )
+                .expect("Failed to request animation frame");
+        }) as Box<dyn FnMut()>));
+
+        window()
+            .unwrap()
+            .request_animation_frame(
+                g.borrow().as_ref().unwrap().as_ref().unchecked_ref(),
+            )
+            .expect("Failed to request animation frame");
+
+
+        event_loop.set_control_flow(ControlFlow::Wait);
+    }
+
+
+
     let window = Rc::new(builder.build(&event_loop).unwrap());
 
     let mut pixels = {
@@ -120,6 +151,56 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
                 println!("The close button was pressed; stopping");
                 elwt.exit();
             },
+            Event::UserEvent(()) => {
+                // web redraw
+                let now_ms = get_now_ms();
+                let elapsed_ms = now_ms - last_cpu_tick_ms;
+                let elapsed_ns = elapsed_ms * 1000000.0;
+                let cycles_to_emulate = (elapsed_ns / ns_per_cycle) as u64;
+
+                log::trace!("{} ms elapsed", elapsed_ms);
+
+                for _ in 0..cycles_to_emulate {
+                    // print_next_instruction(&mut cpu, &mut bus);
+
+                    blitter.cycle(&mut bus);
+                    cpu.step(&mut bus);
+
+                    cpu.set_irq(blitter.clear_irq_trigger());
+                }
+
+                if cycles_to_emulate > 0 {
+                    last_cpu_tick_ms = now_ms;
+                }
+
+                log::info!("time since last render: {}", now_ms - last_render_time);
+                last_render_time = now_ms;
+                //
+                let fb = bus.read_full_framebuffer();
+                //
+                for (p, pixel) in pixels.frame_mut().chunks_exact_mut(4).enumerate() {
+                    let color_index = fb[p]; // Get the 8-bit color index from the console's framebuffer
+                    let (r, g, b, a) = COLOR_MAP[color_index as usize]; // Retrieve the corresponding RGBA color
+
+                    // Map the color to the pixel's RGBA channels
+                    pixel[0] = r; // R
+                    pixel[1] = g; // G
+                    pixel[2] = b; // B
+                    pixel[3] = a; // A
+                }
+
+                // flip framebuffer, illegally
+                // bus.write_byte(0x2007, 0b0000_0010 ^ bus.system_control.dma_flags.0);
+
+                window.request_redraw();
+                if bus.system_control.dma_flags.dma_nmi() {
+                    // cpu.non_maskable_interrupt_request();
+                    cpu.set_nmi(bus.system_control.dma_flags.dma_nmi());
+                }
+                // println!("triggered nmi")
+                
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             Event::AboutToWait => {
                 let now_ms = get_now_ms();
                 let elapsed_ms = now_ms - last_cpu_tick_ms;
@@ -142,6 +223,7 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
                 }
 
                 if (now_ms - last_render_time) >= 16.67 { // 16.67ms
+                    log::info!("time since last render: {}", now_ms - last_render_time);
                     last_render_time = now_ms;
                     //
                     let fb = bus.read_full_framebuffer();
