@@ -6,7 +6,9 @@ use crate::Bus;
 use crate::cartridges::CartridgeType;
 use crate::gamepad::GamePad;
 use crate::gametank_bus::ARAM;
-use crate::gametank_bus::registers::{new_framebuffer, BankingRegister, BlitterFlags, BlitterRegisters, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer, SystemControl};
+use crate::gametank_bus::reg_blitter::BlitterRegisters;
+use crate::gametank_bus::reg_etc::{new_framebuffer, BankingRegister, BlitterFlags, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer};
+use crate::gametank_bus::reg_system_control::SystemControl;
 
 const HELLO_WORLD_GTR: &[u8] = include_bytes!("../test_cartridges/hello.gtr");
 // const MICROVOID_GTR: &[u8] = include_bytes!("../test_cartridges/microvoid.gtr");
@@ -36,7 +38,7 @@ impl Default for CpuBus {
     fn default() -> Self {
         let mut rng = thread_rng();
 
-        let mut bus = Self {
+        let bus = Self {
             cycles: 0,
             zero_page: [0; 0x100],
             cpu_stack: [0; 0x100],

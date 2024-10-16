@@ -1,5 +1,3 @@
-use w65c02s::W65C02S;
-use crate::Bus;
 
 pub fn get_now_ms() -> f64 {
     #[cfg(target_arch = "wasm32")]

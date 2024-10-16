@@ -1,26 +1,16 @@
-use tracing::{error, warn};
+use tracing::{error};
 use w65c02s::{System, W65C02S};
 use crate::Bus;
 
 pub(crate) type ARAM = Box<[u8; 0x1000]>;
 
+#[derive(Default)]
 pub struct AcpBus {
     cycles: u8,
     pub irq_counter: i32,
 
     pub sample: u8,
     pub aram: Option<ARAM>
-}
-
-impl Default for AcpBus {
-    fn default() -> Self {
-        Self {
-            cycles: 0,
-            irq_counter: 0,
-            sample: 0,
-            aram: None,
-        }
-    }
 }
 
 impl AcpBus {
@@ -42,11 +32,7 @@ impl AcpBus {
 
     pub(crate) fn read_byte(&self, address: u16) -> u8 {
         if let Some(aram) = &self.aram {
-            match address {
-                _ => {
-                    aram[(address as usize) % 0x1000]
-                }
-            }
+            aram[(address as usize) % 0x1000]
         } else {
             error!("acp contention on audio ram");
             0

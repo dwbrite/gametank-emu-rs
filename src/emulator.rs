@@ -1,4 +1,3 @@
-use std::collections::hash_map::Keys;
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 use std::rc::Rc;
@@ -12,81 +11,14 @@ use crate::audio_output::GameTankAudio;
 use crate::blitter::Blitter;
 use crate::{Bus, PlayState};
 use crate::color_map::COLOR_MAP;
-use crate::emulator::ControllerButton::*;
-use crate::emulator::InputCommand::*;
-use crate::emulator::KeyState::{Held, JustPressed, JustReleased, Released};
-use crate::gamepad::GamePad;
+use crate::input::ControllerButton::*;
+use crate::input::InputCommand::*;
+use crate::input::KeyState::{JustReleased};
 use crate::gametank_bus::{AcpBus, CpuBus};
 use crate::helpers::get_now_ms;
+use crate::input::{ControllerButton, InputCommand, KeyState};
 use crate::PlayState::{Paused, Playing, WasmInit};
 
-#[derive(Copy, Clone)]
-#[derive(Eq, Hash, PartialEq)]
-pub enum ControllerButton {
-    Up,
-    Down,
-    Left,
-    Right,
-    B,
-    A,
-    Start,
-    C,
-}
-
-#[derive(Copy, Clone)]
-#[derive(Eq, Hash, PartialEq)]
-pub enum InputCommand {
-    Controller1(ControllerButton),
-    Controller2(ControllerButton),
-    PlayPause,
-    SoftReset,
-    HardReset,
-}
-
-
-#[derive(Copy, Clone)]
-#[derive(Eq, Hash, PartialEq)]
-pub enum KeyState {
-    JustPressed,
-    Held,
-    JustReleased,
-    Released
-}
-
-impl KeyState {
-    fn is_pressed(&self) -> bool {
-        match self {
-            JustPressed => { true }
-            Held => { true }
-            JustReleased => { false }
-            Released => { false }
-        }
-    }
-
-    fn new(pressed: bool) -> Self {
-        if pressed {
-            return JustPressed
-        }
-        Released
-    }
-
-    fn update_state(&self, pressed: bool) -> Self {
-        if pressed {
-            return match self {
-                JustPressed => { Held }
-                Held => { Held }
-                JustReleased => { JustPressed }
-                Released => { JustPressed }
-            }
-        }
-        match self {
-            JustPressed => { JustReleased }
-            Held => { JustReleased }
-            JustReleased => { Released }
-            Released => { Released }
-        }
-    }
-}
 
 pub struct Emulator {
     pub window: Rc<Window>,
@@ -115,6 +47,12 @@ pub struct Emulator {
 
 impl Emulator {
     pub fn process_cycles(&mut self, is_web: bool) {
+        self.process_inputs();
+
+        if self.play_state != Playing {
+            return
+        }
+
         // web redraw
         let now_ms = get_now_ms();
         let mut elapsed_ms = now_ms - self.last_emu_tick;
@@ -129,16 +67,11 @@ impl Emulator {
 
         let mut acp_cycle_accumulator = 0;
 
-        self.process_inputs();
-
         while remaining_cycles > 0 {
-            let op_addr = self.cpu.get_pc();
-            let op = self.cpu_bus.read_byte(op_addr);
-
             if self.cpu.get_state() == AwaitingInterrupt {
                 self.wait_counter += 1;
             } else if self.wait_counter > 0 {
-                // info!("waited {} cycles", self.wait_counter);
+                debug!("waited {} cycles", self.wait_counter);
                 self.wait_counter = 0;
             }
 
@@ -162,12 +95,12 @@ impl Emulator {
             for _ in 0..cpu_cycles {
                 self.blitter.cycle(&mut self.cpu_bus);
             }
-            // self.blitter.instant_blit(&mut self.cpu_bus);
+            // TODO: self.blitter.instant_blit(&mut self.cpu_bus);
 
             let blit_irq = self.blitter.clear_irq_trigger();
             self.cpu.set_irq(blit_irq);
             if blit_irq {
-                // info!("blit irq triggered");
+                debug!("blit irq triggered");
             }
 
 
@@ -179,7 +112,7 @@ impl Emulator {
 
         self.last_emu_tick = now_ms;
 
-        if is_web || (now_ms - self.last_render_time) >= 16.67 {
+        if !is_web && (now_ms - self.last_render_time) >= 16.67 {
             debug!("time since last render: {}", now_ms - self.last_render_time);
             self.last_render_time = now_ms;
 
@@ -271,7 +204,7 @@ impl Emulator {
                         match self.play_state {
                             Paused => { self.play_state = Playing; }
                             Playing => { self.play_state = Paused; }
-                            WasmInit => {}
+                            WasmInit => { self.play_state = Playing; }
                         }
                     }
                 }
@@ -282,6 +215,7 @@ impl Emulator {
                     // TODO
                 }
             }
+            self.input_state.insert(*key, self.input_state[key].update());
         }
     }
     fn set_gamepad_input(&mut self, gamepad: usize, key: &InputCommand, button: &ControllerButton) {

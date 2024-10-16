@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 use std::ops::IndexMut;
 use dasp_graph::{Buffer, Input, NodeData};
 use dasp_interpolate::linear::Linear;
-use dasp_interpolate::sinc::Sinc;
 use dasp_signal::Signal;
 use klingt::{AudioNode, Klingt};
 use klingt::nodes::effect::SlewLimiter;

@@ -1,9 +1,10 @@
 mod bus;
 mod acp_bus;
-mod registers;
+mod reg_etc;
 mod cpu_bus;
+mod reg_system_control;
+mod reg_blitter;
 
-use w65c02s::System;
 pub use bus::*;
 pub use acp_bus::*;
 pub use cpu_bus::*;

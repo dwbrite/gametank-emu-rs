@@ -9,22 +9,23 @@ mod audio_output;
 mod emulator;
 mod cartridges;
 mod gamepad;
+mod input;
 
 use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::rc::Rc;
 use pixels::{PixelsBuilder, SurfaceTexture};
-use tracing::{debug, info, Level};
+use tracing::{info, Level};
+use tracing_subscriber::layer::SubscriberExt;
 use w65c02s::W65C02S;
-use winit::{event::{Event, WindowEvent}, event_loop::EventLoop, keyboard};
+use winit::{event::{Event, WindowEvent}, event_loop::EventLoop};
 
 use winit::dpi::LogicalSize;
-use winit::event_loop::ControlFlow;
+use winit::event_loop::{ControlFlow, EventLoopBuilder};
 
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 128;
 
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 #[cfg(target_arch = "wasm32")]
@@ -32,15 +33,16 @@ use web_sys::{HtmlCanvasElement, window};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
-use winit::event::{ElementState, KeyEvent, MouseButton};
-use winit::event::ElementState::Pressed;
-use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey, SmolStr};
+use winit::event::{KeyEvent, MouseButton};
+use winit::keyboard::{Key, NamedKey, SmolStr};
 
 use winit::window::{WindowBuilder};
 use emulator::Emulator;
+use EmulatorEvent::LogicTick;
 use crate::blitter::Blitter;
-use crate::emulator::ControllerButton::*;
-use crate::emulator::InputCommand;
+use input::ControllerButton::*;
+use input::InputCommand;
+use crate::EmulatorEvent::Redraw;
 pub use crate::gametank_bus::Bus;
 use crate::gametank_bus::{AcpBus, CpuBus};
 use crate::helpers::*;
@@ -120,11 +122,17 @@ pub fn main() {
     run(builder, surface_size);
 }
 
-
+#[derive(Debug, Copy, Clone)]
+enum EmulatorEvent {
+    LogicTick,
+    Redraw,
+}
 
 fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop: EventLoop<EmulatorEvent> = EventLoopBuilder::with_user_event().build().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
+
+    let mut play_state = Playing;
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -136,11 +144,30 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
 
         let event_loop_proxy = event_loop.create_proxy();
 
+        let proxy = event_loop_proxy.clone();
+        // Millisecond event trigger (2ms)
+        let interval_closure = Closure::wrap(Box::new(move || {
+            proxy.send_event(LogicTick).unwrap();
+        }) as Box<dyn FnMut()>);
+
+        window()
+            .unwrap()
+            .set_interval_with_callback_and_timeout_and_arguments_0(
+                interval_closure.as_ref().unchecked_ref(),
+                2,
+            )
+            .expect("Failed to set interval");
+
+        interval_closure.forget(); // Avoid memory leaks
+
+        // Redraw event using requestAnimationFrame
         let f = Rc::new(RefCell::new(None::<Closure<dyn FnMut()>>));
         let g = f.clone();
 
+        let proxy = event_loop_proxy.clone();
         *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-            event_loop_proxy.send_event(()).unwrap();
+            // Send a custom redraw event
+            proxy.send_event(Redraw).unwrap();
 
             window()
                 .unwrap()
@@ -157,10 +184,11 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
             )
             .expect("Failed to request animation frame");
 
-
+        // Control event loop flow
         event_loop.set_control_flow(ControlFlow::Wait);
-    }
 
+        play_state = WasmInit;
+    }
 
 
     let window = Rc::new(builder.build(&event_loop).unwrap());
@@ -173,7 +201,6 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
     };
 
     let mut bus = CpuBus::default();
-    // let mut cpu = MOS6502::new_reset_position(&mut bus);
     let mut cpu = W65C02S::new();
     cpu.step(&mut bus); // take one initial step, to get through the reset vector
     let acp = W65C02S::new();
@@ -186,13 +213,10 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
 
     let last_render_time = get_now_ms();
 
-    let mut audio_out = None;
-
-    // let sine_wave = rate(sample_rate).const_hz(60.0).sine();
-
-    let mut play_state = Playing;
 
     let mut input_bindings = HashMap::new();
+
+    // controller 1
     input_bindings.insert(Key::Named(NamedKey::Enter), InputCommand::Controller1(Start));
     input_bindings.insert(Key::Named(NamedKey::ArrowLeft), InputCommand::Controller1(Left));
     input_bindings.insert(Key::Named(NamedKey::ArrowRight), InputCommand::Controller1(Right));
@@ -202,12 +226,13 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
     input_bindings.insert(Key::Character(SmolStr::new("x")), InputCommand::Controller1(B));
     input_bindings.insert(Key::Character(SmolStr::new("c")), InputCommand::Controller1(C));
 
+    // controller 2
+    // TODO:
 
-    #[cfg(target_arch = "wasm32")]
-    {
-        play_state = WasmInit;
-        audio_out = None;
-    }
+    // emulator
+    input_bindings.insert(Key::Character(SmolStr::new("r")), InputCommand::SoftReset);
+    input_bindings.insert(Key::Character(SmolStr::new("R")), InputCommand::HardReset);
+    input_bindings.insert(Key::Character(SmolStr::new("p")), InputCommand::PlayPause);
 
     let mut emu = Emulator {
         play_state,
@@ -219,14 +244,14 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
         acp,
         blitter,
 
-        clock_cycles_to_vblank: 4656,
+        clock_cycles_to_vblank: 59659,
         last_emu_tick: last_cpu_tick_ms,
         cpu_frequency_hz,
         cpu_ns_per_cycle,
         last_render_time,
-        audio_out,
+        audio_out: None,
         wait_counter: 0,
-        // _sine_wave: sine_wave,
+
         input_bindings,
         input_state: Default::default(),
     };
@@ -242,16 +267,19 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
             info!("The close button was pressed; stopping");
             elwt.exit();
         },
-        Event::UserEvent(()) => {
-            if emu.play_state == Playing {
-                emu.process_cycles(true);
+        Event::UserEvent(e) => {
+            match e {
+                LogicTick => {
+                    emu.process_cycles(true);
+                }
+                Redraw => {
+                    emu.window.request_redraw();
+                }
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
         Event::AboutToWait => {
-            if emu.play_state == Playing {
-                emu.process_cycles(false);
-            }
+            emu.process_cycles(false);
         }
         Event::WindowEvent { event: WindowEvent::MouseInput { button, .. }, .. } => match button {
             MouseButton::Left => if emu.play_state == WasmInit {
@@ -262,37 +290,8 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
             _ => {}
         },
         Event::WindowEvent { event: WindowEvent::KeyboardInput { event, .. }, .. } => {
-            // TODO: handle input
-            let KeyEvent { physical_key, logical_key, text, location, state, repeat, .. } = event;
+            let KeyEvent {  logical_key,   state,  .. } = event;
             emu.set_input_state(logical_key, state);
-
-            // if emu.play_state == WasmInit {
-            //     emu.play_state = Playing;
-            //     emu.last_emu_tick = get_now_ms();
-            //     emu.last_render_time = get_now_ms();
-            // }
-            //
-            // match physical_key {
-            //     PhysicalKey::Code(KeyCode::KeyP) => {
-            //         if state == Pressed && !repeat {
-            //             emu.play_state = match emu.play_state {
-            //                 WasmInit => {
-            //                     emu.last_emu_tick = get_now_ms();
-            //                     emu.last_render_time = get_now_ms();
-            //                     Playing
-            //                 }
-            //                 Paused => {
-            //                     emu.last_emu_tick = get_now_ms();
-            //                     emu.last_render_time = get_now_ms();
-            //                     Playing
-            //                 }
-            //                 Playing => { Paused }
-            //             };
-            //         }
-            //     }
-            //     PhysicalKey::Code(_) => {}
-            //     PhysicalKey::Unidentified(_) => {}
-            // }
         },
         Event::WindowEvent {
             event: WindowEvent::RedrawRequested,

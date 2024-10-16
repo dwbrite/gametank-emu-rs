@@ -1,4 +1,4 @@
-use tracing::{debug, info, trace, warn};
+use tracing::{debug};
 use crate::gametank_bus::{CpuBus};
 
 #[derive(Debug)]
@@ -47,6 +47,7 @@ impl Blitter {
         result
     }
 
+    // TODO: fix blitter math
     pub fn cycle(&mut self, bus: &mut CpuBus) {
         debug!(target: "blitter", "{:?}", self);
 
