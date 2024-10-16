@@ -5,34 +5,80 @@ mod color_map;
 mod blitter;
 mod gametank_bus;
 mod helpers;
+mod audio_output;
+mod emulator;
+mod cartridges;
+mod gamepad;
 
+use std::cmp::PartialEq;
+use std::collections::HashMap;
 use std::rc::Rc;
-use log::LevelFilter;
 use pixels::{PixelsBuilder, SurfaceTexture};
-use simple_logger::SimpleLogger;
+use tracing::{debug, info, Level};
 use w65c02s::W65C02S;
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::EventLoop,
-};
+use winit::{event::{Event, WindowEvent}, event_loop::EventLoop, keyboard};
 
-use winit::dpi::{LogicalSize};
+use winit::dpi::LogicalSize;
 use winit::event_loop::ControlFlow;
 
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 128;
 
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+
 #[cfg(target_arch = "wasm32")]
-use web_sys::{ HtmlCanvasElement, window };
+use web_sys::{HtmlCanvasElement, window};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
+use winit::event::{ElementState, KeyEvent, MouseButton};
+use winit::event::ElementState::Pressed;
+use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey, SmolStr};
 
-use winit::window::WindowBuilder;
+use winit::window::{WindowBuilder};
+use emulator::Emulator;
 use crate::blitter::Blitter;
-use crate::color_map::COLOR_MAP;
-pub use crate::gametank_bus::{Bus};
+use crate::emulator::ControllerButton::*;
+use crate::emulator::InputCommand;
+pub use crate::gametank_bus::Bus;
+use crate::gametank_bus::{AcpBus, CpuBus};
 use crate::helpers::*;
+use crate::PlayState::*;
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum PlayState {
+    WasmInit,
+    Paused,
+    Playing,
+}
+
+fn setup_logging() {
+    #[cfg(target_arch = "wasm32")]
+    {
+
+        use tracing_wasm::{WASMLayer, WASMLayerConfigBuilder};
+
+        // Set up the WASM layer for tracing logs
+        let wlconfig = WASMLayerConfigBuilder::new()
+            .set_max_level(Level::INFO).build();
+
+        let wasm_layer = WASMLayer::new(wlconfig);
+        // Configure the subscriber with the WASM layer
+        tracing_subscriber::registry()
+            .with(wasm_layer)
+            .init();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        tracing_subscriber::fmt()
+            .with_max_level(Level::INFO)
+            .compact()
+            .finish()
+            .init();
+    }
+}
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]
 #[cfg(target_arch = "wasm32")]
@@ -40,8 +86,8 @@ pub fn wasm_main() {
     use winit::platform::web::{WindowBuilderExtWebSys};
 
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    console_log::init().unwrap();
-    log::info!("console logger started.");
+    setup_logging();
+    info!("console logger started.");
 
     let window = window().expect("should have a Window");
     let document = window.document().expect("should have a Document");
@@ -61,12 +107,8 @@ pub fn wasm_main() {
 }
 
 pub fn main() {
-    SimpleLogger::new()
-        .with_colors(true)
-        .with_level(LevelFilter::Info)
-        .init()
-        .unwrap();
-    log::info!("stdout logger started");
+    setup_logging();
+    info!("stdout logger started");
 
     let surface_size = LogicalSize::new((WIDTH*2) as f64, (HEIGHT*2) as f64);
 
@@ -77,6 +119,8 @@ pub fn main() {
 
     run(builder, surface_size);
 }
+
+
 
 fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
     let event_loop = EventLoop::new().unwrap();
@@ -121,151 +165,149 @@ fn run(builder: WindowBuilder, surface_size: LogicalSize<f64>) {
 
     let window = Rc::new(builder.build(&event_loop).unwrap());
 
-    let mut pixels = {
+    let pixels = {
         let surface_texture = SurfaceTexture::new(surface_size.width as u32, surface_size.height as u32, &window);
         let builder = PixelsBuilder::new(WIDTH, HEIGHT, surface_texture);
 
         futures::executor::block_on(builder.build_async()).expect("you were fucked from the start")
     };
 
-    let mut bus = Bus::default();
+    let mut bus = CpuBus::default();
     // let mut cpu = MOS6502::new_reset_position(&mut bus);
     let mut cpu = W65C02S::new();
     cpu.step(&mut bus); // take one initial step, to get through the reset vector
+    let acp = W65C02S::new();
 
-    let mut blitter = Blitter::default();
-    log::trace!(target: "bus_init", "{:?}", bus);
+    let blitter = Blitter::default();
 
-    let mut last_cpu_tick_ms = get_now_ms();
+    let last_cpu_tick_ms = get_now_ms();
     let cpu_frequency_hz = 3_579_545.0; // Precise frequency
-    let ns_per_cycle = 1_000_000_000.0 / cpu_frequency_hz; // Nanoseconds per cycle
+    let cpu_ns_per_cycle = 1_000_000_000.0 / cpu_frequency_hz; // Nanoseconds per cycle
 
-    let mut last_render_time = get_now_ms();
+    let last_render_time = get_now_ms();
 
-    event_loop.run(move |event, elwt| {
-        match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                println!("The close button was pressed; stopping");
-                elwt.exit();
-            },
-            Event::UserEvent(()) => {
-                // web redraw
-                let now_ms = get_now_ms();
-                let elapsed_ms = now_ms - last_cpu_tick_ms;
-                let elapsed_ns = elapsed_ms * 1000000.0;
-                let cycles_to_emulate = (elapsed_ns / ns_per_cycle) as u64;
+    let mut audio_out = None;
 
-                log::trace!("{} ms elapsed", elapsed_ms);
+    // let sine_wave = rate(sample_rate).const_hz(60.0).sine();
 
-                for _ in 0..cycles_to_emulate {
-                    // print_next_instruction(&mut cpu, &mut bus);
+    let mut play_state = Playing;
 
-                    blitter.cycle(&mut bus);
-                    cpu.step(&mut bus);
+    let mut input_bindings = HashMap::new();
+    input_bindings.insert(Key::Named(NamedKey::Enter), InputCommand::Controller1(Start));
+    input_bindings.insert(Key::Named(NamedKey::ArrowLeft), InputCommand::Controller1(Left));
+    input_bindings.insert(Key::Named(NamedKey::ArrowRight), InputCommand::Controller1(Right));
+    input_bindings.insert(Key::Named(NamedKey::ArrowUp), InputCommand::Controller1(Up));
+    input_bindings.insert(Key::Named(NamedKey::ArrowDown), InputCommand::Controller1(Down));
+    input_bindings.insert(Key::Character(SmolStr::new("z")), InputCommand::Controller1(A));
+    input_bindings.insert(Key::Character(SmolStr::new("x")), InputCommand::Controller1(B));
+    input_bindings.insert(Key::Character(SmolStr::new("c")), InputCommand::Controller1(C));
 
-                    cpu.set_irq(blitter.clear_irq_trigger());
-                }
 
-                if cycles_to_emulate > 0 {
-                    last_cpu_tick_ms = now_ms;
-                }
+    #[cfg(target_arch = "wasm32")]
+    {
+        play_state = WasmInit;
+        audio_out = None;
+    }
 
-                log::info!("time since last render: {}", now_ms - last_render_time);
-                last_render_time = now_ms;
-                //
-                let fb = bus.read_full_framebuffer();
-                //
-                for (p, pixel) in pixels.frame_mut().chunks_exact_mut(4).enumerate() {
-                    let color_index = fb[p]; // Get the 8-bit color index from the console's framebuffer
-                    let (r, g, b, a) = COLOR_MAP[color_index as usize]; // Retrieve the corresponding RGBA color
+    let mut emu = Emulator {
+        play_state,
+        window,
+        pixels,
+        cpu_bus: bus,
+        acp_bus: AcpBus::default(),
+        cpu,
+        acp,
+        blitter,
 
-                    // Map the color to the pixel's RGBA channels
-                    pixel[0] = r; // R
-                    pixel[1] = g; // G
-                    pixel[2] = b; // B
-                    pixel[3] = a; // A
-                }
+        clock_cycles_to_vblank: 4656,
+        last_emu_tick: last_cpu_tick_ms,
+        cpu_frequency_hz,
+        cpu_ns_per_cycle,
+        last_render_time,
+        audio_out,
+        wait_counter: 0,
+        // _sine_wave: sine_wave,
+        input_bindings,
+        input_state: Default::default(),
+    };
 
-                // flip framebuffer, illegally
-                // bus.write_byte(0x2007, 0b0000_0010 ^ bus.system_control.dma_flags.0);
 
-                window.request_redraw();
-                if bus.system_control.dma_flags.dma_nmi() {
-                    // cpu.non_maskable_interrupt_request();
-                    cpu.set_nmi(bus.system_control.dma_flags.dma_nmi());
-                }
-                // println!("triggered nmi")
-                
+    // debug!(target: "bus_init", "{:?}", emu.cpu_bus);
+
+    event_loop.run(move |event, elwt| match event {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
+            info!("The close button was pressed; stopping");
+            elwt.exit();
+        },
+        Event::UserEvent(()) => {
+            if emu.play_state == Playing {
+                emu.process_cycles(true);
             }
-            #[cfg(not(target_arch = "wasm32"))]
-            Event::AboutToWait => {
-                let now_ms = get_now_ms();
-                let elapsed_ms = now_ms - last_cpu_tick_ms;
-                let elapsed_ns = elapsed_ms * 1000000.0;
-                let cycles_to_emulate = (elapsed_ns / ns_per_cycle) as u64;
-
-                log::trace!("{} ms elapsed", elapsed_ms);
-
-                for _ in 0..cycles_to_emulate {
-                    // print_next_instruction(&mut cpu, &mut bus);
-
-                    blitter.cycle(&mut bus);
-                    cpu.step(&mut bus);
-
-                    cpu.set_irq(blitter.clear_irq_trigger());
-                }
-
-                if cycles_to_emulate > 0 {
-                    last_cpu_tick_ms = now_ms;
-                }
-
-                if (now_ms - last_render_time) >= 16.67 { // 16.67ms
-                    log::info!("time since last render: {}", now_ms - last_render_time);
-                    last_render_time = now_ms;
-                    //
-                    let fb = bus.read_full_framebuffer();
-                    //
-                    for (p, pixel) in pixels.frame_mut().chunks_exact_mut(4).enumerate() {
-                        let color_index = fb[p]; // Get the 8-bit color index from the console's framebuffer
-                        let (r, g, b, a) = COLOR_MAP[color_index as usize]; // Retrieve the corresponding RGBA color
-
-                        // Map the color to the pixel's RGBA channels
-                        pixel[0] = r; // R
-                        pixel[1] = g; // G
-                        pixel[2] = b; // B
-                        pixel[3] = a; // A
-                    }
-
-                    // flip framebuffer, illegally
-                    // bus.write_byte(0x2007, 0b0000_0010 ^ bus.system_control.dma_flags.0);
-
-                    window.request_redraw();
-                    if bus.system_control.dma_flags.dma_nmi() {
-                        // cpu.non_maskable_interrupt_request();
-                        cpu.set_nmi(bus.system_control.dma_flags.dma_nmi());
-                    }
-                    // println!("triggered nmi")
-                }
-            }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => if let Err(_err) = pixels.render() {
-                elwt.exit();
-            },
-            Event::WindowEvent {
-                event: WindowEvent::Resized(size),
-                ..
-            } => {
-                // explicity ignore resize failures?
-                let _ = pixels.resize_surface(size.width, size.height);
-            }
-
-            _ => (),
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        Event::AboutToWait => {
+            if emu.play_state == Playing {
+                emu.process_cycles(false);
+            }
+        }
+        Event::WindowEvent { event: WindowEvent::MouseInput { button, .. }, .. } => match button {
+            MouseButton::Left => if emu.play_state == WasmInit {
+                emu.play_state = Playing;
+                emu.last_emu_tick = get_now_ms();
+                emu.last_render_time = get_now_ms();
+            },
+            _ => {}
+        },
+        Event::WindowEvent { event: WindowEvent::KeyboardInput { event, .. }, .. } => {
+            // TODO: handle input
+            let KeyEvent { physical_key, logical_key, text, location, state, repeat, .. } = event;
+            emu.set_input_state(logical_key, state);
+
+            // if emu.play_state == WasmInit {
+            //     emu.play_state = Playing;
+            //     emu.last_emu_tick = get_now_ms();
+            //     emu.last_render_time = get_now_ms();
+            // }
+            //
+            // match physical_key {
+            //     PhysicalKey::Code(KeyCode::KeyP) => {
+            //         if state == Pressed && !repeat {
+            //             emu.play_state = match emu.play_state {
+            //                 WasmInit => {
+            //                     emu.last_emu_tick = get_now_ms();
+            //                     emu.last_render_time = get_now_ms();
+            //                     Playing
+            //                 }
+            //                 Paused => {
+            //                     emu.last_emu_tick = get_now_ms();
+            //                     emu.last_render_time = get_now_ms();
+            //                     Playing
+            //                 }
+            //                 Playing => { Paused }
+            //             };
+            //         }
+            //     }
+            //     PhysicalKey::Code(_) => {}
+            //     PhysicalKey::Unidentified(_) => {}
+            // }
+        },
+        Event::WindowEvent {
+            event: WindowEvent::RedrawRequested,
+            ..
+        } => if let Err(_err) = emu.pixels.render() {
+            elwt.exit();
+        },
+        Event::WindowEvent {
+            event: WindowEvent::Resized(size),
+            ..
+        } => {
+            // explicity ignore resize failures?
+            let _ = emu.pixels.resize_surface(size.width, size.height);
+        }
+
+        _ => {},
     }).expect("Something went wrong :(");
 }
-

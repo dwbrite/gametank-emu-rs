@@ -1,5 +1,8 @@
 use std::cell::RefCell;
 use bitfield::bitfield;
+use tracing::warn;
+use crate::emulator::InputCommand;
+use crate::gamepad::GamePad;
 
 bitfield!{
     pub struct BankingRegister(u8);
@@ -53,7 +56,7 @@ impl BlitterRegisters {
     }
 
     pub fn read_byte(&self, address: u16) -> u8 {
-        log::warn!("Attempted to read from unreadable memory at: ${:02X}", address);
+        warn!("Attempted to read from unreadable memory at: ${:02X}", address);
         0
     }
 
@@ -89,8 +92,8 @@ pub struct SystemControl {
 
     pub audio_enable_sample_rate: u8,
     pub dma_flags: BlitterFlags,
-    pub gamepad_1: u8,
-    pub gamepad_2: u8,
+
+    pub gamepads: [GamePad; 2]
 }
 
 impl SystemControl {
@@ -109,6 +112,14 @@ impl SystemControl {
 
         return GraphicsMemoryMap::VRAM
     }
+    
+    pub fn acp_enabled(&self) -> bool {
+        (self.audio_enable_sample_rate & 0b1000_0000) != 0
+    }
+    
+    pub fn sample_rate(&self) -> u8 {
+        self.audio_enable_sample_rate
+    }
 
     pub fn get_framebuffer_out(&self) -> usize {
         self.dma_flags.dma_page_out() as usize
@@ -122,27 +133,57 @@ impl SystemControl {
             0x2006 => { self.audio_enable_sample_rate = data } // TODO: ???
             0x2007 => { self.dma_flags.0 = data }
             _ => {
-                log::warn!("Attempted to write read-only memory at: ${:02X}", address);
+                warn!("Attempted to write read-only memory at: ${:02X}", address);
             }
         }
     }
 
     pub fn read_byte(&mut self, address: u16) -> u8 {
+
         match address {
-            0x2008 => { 0 } // TODO: read inputs and track controller state
-            0x2009 => { 0 } // TODO: read inputs and track controller state
+            0x2008 => {
+                self.read_gamepad_byte(true)
+            }
+            0x2009 => {
+                self.read_gamepad_byte(false)
+            }
             _ => {
-                log::warn!("Attempted to read from unreadable memory at: ${:02X}", address);
+                warn!("Attempted to read from unreadable memory at: ${:02X}", address);
                 0
             }
         }
     }
+
+    pub fn read_gamepad_byte(&mut self, port_1: bool) -> u8 {
+        let gamepad = &mut self.gamepads[(!port_1) as usize];
+        let mut byte = 255;
+        if !gamepad.port_select {
+            byte &= !((gamepad.start as u8) << 5);
+            byte &= !((gamepad.a as u8) << 4);
+        } else {
+            byte &= !((gamepad.c as u8) << 5);
+            byte &= !((gamepad.b as u8) << 4);
+            byte &= !((gamepad.up as u8) << 3);
+            byte &= !((gamepad.down as u8) << 2);
+            byte &= !((gamepad.left as u8) << 1);
+            byte &= !((gamepad.right as u8) << 0);
+        }
+
+        self.gamepads[port_1 as usize].port_select = false;
+        self.gamepads[(!port_1) as usize].port_select = !self.gamepads[(!port_1) as usize].port_select;
+
+        byte
+    }
 }
+
+
 
 #[derive(Debug)]
 pub struct Cartridge32k {
     pub data: Box<[u8; 0x8000]>
 }
+
+
 
 
 pub type FrameBuffer = Box<[u8; 128*128]>;

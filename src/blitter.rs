@@ -1,4 +1,5 @@
-use crate::gametank_bus::Bus;
+use tracing::{debug, info, trace, warn};
+use crate::gametank_bus::{CpuBus};
 
 #[derive(Debug)]
 pub struct Blitter {
@@ -17,7 +18,8 @@ pub struct Blitter {
 
     color: u8,
     blitting: bool,
-    pub(crate) irq_trigger: bool,
+    cycles: i32,
+    pub irq_trigger: bool,
 }
 
 impl Blitter {
@@ -34,6 +36,7 @@ impl Blitter {
             color_fill: false,
             color: 0,
             blitting: false,
+            cycles: 0,
             irq_trigger: false,
         }
     }
@@ -44,8 +47,13 @@ impl Blitter {
         result
     }
 
-    pub fn cycle(&mut self, bus: &mut Bus) {
-        log::trace!(target: "blitter", "{:?}", self);
+    pub fn cycle(&mut self, bus: &mut CpuBus) {
+        debug!(target: "blitter", "{:?}", self);
+
+        if self.blitting && bus.blitter.start == 1 {
+            debug!("updated blitter after processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
+            bus.blitter.start = 0;
+        }
 
         // load y at blitter start
         if !self.blitting && bus.blitter.start != 0 {
@@ -56,8 +64,17 @@ impl Blitter {
             self.color = !bus.blitter.color;
             self.color_fill = bus.system_control.dma_flags.dma_colorfill_enable();
             self.blitting = true;
+            self.cycles = 0;
 
-            log::trace!(target: "blitter", "starting {}x{} blit at ({}, {}); color mode {}", bus.blitter.width, bus.blitter.height, bus.blitter.vx, bus.blitter.vy, bus.system_control.dma_flags.dma_colorfill_enable());
+
+            debug!(target: "blitter", "starting blit from ({}, {}):({}, {}) page {} at ({}, {}); color mode {}, gcarry {}",
+                bus.blitter.gx, bus.blitter.gy,
+                bus.blitter.width, bus.blitter.height,
+                bus.system_control.banking_register.vram_page(),
+                bus.blitter.vx, bus.blitter.vy,
+                bus.system_control.dma_flags.dma_colorfill_enable(),
+                bus.system_control.dma_flags.dma_gcarry(),
+            );
         }
 
         if !self.blitting {
@@ -67,8 +84,6 @@ impl Blitter {
         self.src_x = bus.blitter.gx;
         self.dst_x = bus.blitter.vx;
         self.width = bus.blitter.width;
-        //
-        log::trace!(target: "blitter", "starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
 
         if self.offset_x >= self.width {
             self.offset_x = 0;
@@ -78,16 +93,20 @@ impl Blitter {
         if self.offset_y >= self.height {
             self.offset_y = 0;
             self.blitting = false;
-            // log::trace!("blit complete");
+            bus.blitter.start = 0;
+            debug!("blit complete, copied {} pixels", self.cycles);
             if bus.system_control.dma_flags.dma_irq() {
                 self.irq_trigger = true;
             }
             return
         }
 
+
+        self.cycles += 1;
+
         // if blitter is disabled, counters continue but no write occurs
         if !bus.system_control.dma_flags.dma_enable() {
-            log::trace!(target: "blitter", "blit cycle skipped; dma access disabled. dma flags: {:08b}", bus.system_control.dma_flags.0);
+            debug!(target: "blitter", "blit cycle skipped; dma access disabled. dma flags: {:08b}", bus.system_control.dma_flags.0);
             self.offset_x += 1;
             return
         }
@@ -97,7 +116,6 @@ impl Blitter {
             self.color
         } else {
             let vram_page = bus.system_control.banking_register.vram_page() as usize;
-            let quadrant = bus.blitter.vram_quadrant();
 
             let src_x_mod = if self.src_x >= 128 {
                 self.src_x - 128
@@ -112,11 +130,19 @@ impl Blitter {
             };
 
 
-            let blit_src_x = (src_x_mod + self.offset_x) as usize;
-            let blit_src_y = (src_y_mod + self.offset_y) as usize;
-            log::trace!(target: "blitter", "starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
 
-            bus.vram_banks[vram_page][quadrant][blit_src_x + blit_src_y*128]
+
+            let mut blit_src_x = (src_x_mod + self.offset_x) as usize;
+            let mut blit_src_y = (src_y_mod + self.offset_y) as usize;
+
+            // if gcarry is turned off, blits should tile 16x16
+            if !bus.system_control.dma_flags.dma_gcarry() {
+                blit_src_x = (src_x_mod + self.offset_x % 16) as usize;
+                blit_src_y = (src_y_mod + self.offset_y % 16) as usize;
+            }
+            debug!(target: "blitter", "starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
+
+            bus.vram_banks[vram_page][blit_src_x + blit_src_y*128]
         };
 
         let out_x = (self.dst_x + self.offset_x) as usize;
@@ -135,5 +161,17 @@ impl Blitter {
 
         // increment x offset
         self.offset_x += 1;
+    }
+
+    pub fn instant_blit(&mut self, bus: &mut CpuBus) {
+        // on blit start, blit until done
+        if !self.blitting && bus.blitter.start != 0 {
+            loop {
+                self.cycle(bus);
+                if !self.blitting {
+                    break;
+                }
+            }
+        }
     }
 }
