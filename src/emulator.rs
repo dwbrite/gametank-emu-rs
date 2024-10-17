@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 use std::rc::Rc;
+use std::sync::Arc;
 use winit::window::Window;
 use pixels::Pixels;
 use w65c02s::State::AwaitingInterrupt;
@@ -20,9 +21,9 @@ use crate::input::{ControllerButton, InputCommand, KeyState};
 use crate::PlayState::{Paused, Playing, WasmInit};
 
 
-pub struct Emulator {
-    pub window: Rc<Window>,
-    pub pixels: Pixels,
+pub struct Emulator<'win> {
+    pub window: Option<Arc<Window>>,
+    pub pixels: Option<Pixels<'win>>,
 
     pub cpu_bus: CpuBus,
     pub acp_bus: AcpBus,
@@ -45,7 +46,7 @@ pub struct Emulator {
     pub input_state: HashMap<InputCommand, KeyState>
 }
 
-impl Emulator {
+impl Emulator<'_> {
     pub fn process_cycles(&mut self, is_web: bool) {
         self.process_inputs();
 
@@ -116,7 +117,11 @@ impl Emulator {
             debug!("time since last render: {}", now_ms - self.last_render_time);
             self.last_render_time = now_ms;
 
-            self.window.request_redraw();
+            if let Some(window) = &mut self.window {
+                window.request_redraw();
+            } else {
+                error!("no window to request redraw");
+            }
         }
     }
 
@@ -136,7 +141,7 @@ impl Emulator {
                 let sample_rate = self.cpu_frequency_hz / self.cpu_bus.system_control.sample_rate() as f64;
                 // if audio_out is none or mismatched sample rate
                 if self.audio_out.as_ref().map_or(true, |gta| gta.sample_rate != sample_rate) {
-                    info!("recreated audio stream with new sample rate: {:.3}Hz ({})", sample_rate, self.cpu_bus.system_control.sample_rate());
+                    warn!("recreated audio stream with new sample rate: {:.3}Hz ({})", sample_rate, self.cpu_bus.system_control.sample_rate());
                     self.audio_out = Some(GameTankAudio::new(sample_rate, 48000.0));
                 }
 
@@ -166,15 +171,20 @@ impl Emulator {
 
         let fb = self.cpu_bus.read_full_framebuffer();
 
-        for (p, pixel) in self.pixels.frame_mut().chunks_exact_mut(4).enumerate() {
-            let color_index = fb[p]; // Get the 8-bit color index from the console's framebuffer
-            let (r, g, b, a) = COLOR_MAP[color_index as usize]; // Retrieve the corresponding RGBA color
+        // TODO: oop
+        if let Some(pixels) = &mut self.pixels {
+            for (p, pixel) in pixels.frame_mut().chunks_exact_mut(4).enumerate() {
+                let color_index = fb[p]; // Get the 8-bit color index from the console's framebuffer
+                let (r, g, b, a) = COLOR_MAP[color_index as usize]; // Retrieve the corresponding RGBA color
 
-            // Map the color to the pixel's RGBA channels
-            pixel[0] = r; // R
-            pixel[1] = g; // G
-            pixel[2] = b; // B
-            pixel[3] = a; // A
+                // Map the color to the pixel's RGBA channels
+                pixel[0] = r; // R
+                pixel[1] = g; // G
+                pixel[2] = b; // B
+                pixel[3] = a; // A
+            }
+        } else {
+            error!("vblanked with no pixel buffer :grimacing:");
         }
     }
 
