@@ -1,30 +1,25 @@
 use std::collections::HashMap;
-use tracing::{debug, error, info, warn};
-use std::rc::Rc;
-use std::sync::Arc;
-use winit::window::Window;
-use pixels::Pixels;
+use tracing::{debug, error, warn};
 use w65c02s::State::AwaitingInterrupt;
 use w65c02s::W65C02S;
 use winit::event::ElementState;
-use winit::keyboard::Key;
+use winit::keyboard::{Key, NamedKey, SmolStr};
 use crate::audio_output::GameTankAudio;
 use crate::blitter::Blitter;
 use crate::{Bus, PlayState};
-use crate::color_map::COLOR_MAP;
 use crate::input::ControllerButton::*;
 use crate::input::InputCommand::*;
-use crate::input::KeyState::{JustReleased};
+use crate::input::KeyState::JustReleased;
 use crate::gametank_bus::{AcpBus, CpuBus};
 use crate::helpers::get_now_ms;
 use crate::input::{ControllerButton, InputCommand, KeyState};
 use crate::PlayState::{Paused, Playing, WasmInit};
 
 
-pub struct Emulator<'win> {
-    pub window: Option<Arc<Window>>,
-    pub pixels: Option<Pixels<'win>>,
+pub const WIDTH: u32 = 128;
+pub const HEIGHT: u32 = 128;
 
+pub struct Emulator {
     pub cpu_bus: CpuBus,
     pub acp_bus: AcpBus,
     pub cpu: W65C02S,
@@ -42,11 +37,79 @@ pub struct Emulator<'win> {
     pub play_state: PlayState,
     pub wait_counter: u64,
 
+    // TODO: move bindings out of emulator
     pub input_bindings: HashMap<Key, InputCommand>,
     pub input_state: HashMap<InputCommand, KeyState>
 }
 
-impl Emulator<'_> {
+impl Emulator {
+    pub fn wasm_init(&mut self) {
+        if self.play_state == WasmInit {
+            self.play_state = Playing;
+            self.last_emu_tick = get_now_ms();
+            self.last_render_time = get_now_ms();
+        }
+    }
+
+    pub fn init() -> Self {
+        let play_state = WasmInit;
+
+        let mut bus = CpuBus::default();
+        let mut cpu = W65C02S::new();
+        cpu.step(&mut bus); // take one initial step, to get through the reset vector
+        let acp = W65C02S::new();
+
+        let blitter = Blitter::default();
+
+        let last_cpu_tick_ms = get_now_ms();
+        let cpu_frequency_hz = 3_579_545.0; // Precise frequency
+        let cpu_ns_per_cycle = 1_000_000_000.0 / cpu_frequency_hz; // Nanoseconds per cycle
+
+        let last_render_time = get_now_ms();
+
+
+        // TODO: separation of concerns: input bindings are part of the app, not the emulator
+        let mut input_bindings = HashMap::new();
+
+        // controller 1
+        input_bindings.insert(Key::Named(NamedKey::Enter), InputCommand::Controller1(Start));
+        input_bindings.insert(Key::Named(NamedKey::ArrowLeft), InputCommand::Controller1(Left));
+        input_bindings.insert(Key::Named(NamedKey::ArrowRight), InputCommand::Controller1(Right));
+        input_bindings.insert(Key::Named(NamedKey::ArrowUp), InputCommand::Controller1(Up));
+        input_bindings.insert(Key::Named(NamedKey::ArrowDown), InputCommand::Controller1(Down));
+        input_bindings.insert(Key::Character(SmolStr::new("z")), InputCommand::Controller1(A));
+        input_bindings.insert(Key::Character(SmolStr::new("x")), InputCommand::Controller1(B));
+        input_bindings.insert(Key::Character(SmolStr::new("c")), InputCommand::Controller1(C));
+
+        // controller 2
+        // TODO:
+
+        // emulator
+        input_bindings.insert(Key::Character(SmolStr::new("r")), InputCommand::SoftReset);
+        input_bindings.insert(Key::Character(SmolStr::new("R")), InputCommand::HardReset);
+        input_bindings.insert(Key::Character(SmolStr::new("p")), InputCommand::PlayPause);
+
+        Emulator {
+            play_state,
+            cpu_bus: bus,
+            acp_bus: AcpBus::default(),
+            cpu,
+            acp,
+            blitter,
+
+            clock_cycles_to_vblank: 59659,
+            last_emu_tick: last_cpu_tick_ms,
+            cpu_frequency_hz,
+            cpu_ns_per_cycle,
+            last_render_time,
+            audio_out: None,
+            wait_counter: 0,
+
+            input_bindings,
+            input_state: Default::default(),
+        }
+    }
+
     pub fn process_cycles(&mut self, is_web: bool) {
         self.process_inputs();
 
@@ -116,12 +179,6 @@ impl Emulator<'_> {
         if !is_web && (now_ms - self.last_render_time) >= 16.67 {
             debug!("time since last render: {}", now_ms - self.last_render_time);
             self.last_render_time = now_ms;
-
-            if let Some(window) = &mut self.window {
-                window.request_redraw();
-            } else {
-                error!("no window to request redraw");
-            }
         }
     }
 
@@ -162,7 +219,6 @@ impl Emulator<'_> {
     }
 
     fn vblank(&mut self) {
-        // info!("vblank");
         self.clock_cycles_to_vblank += 59659;
 
         if self.cpu_bus.vblank_nmi_enabled() {
@@ -170,22 +226,6 @@ impl Emulator<'_> {
         }
 
         let fb = self.cpu_bus.read_full_framebuffer();
-
-        // TODO: oop
-        if let Some(pixels) = &mut self.pixels {
-            for (p, pixel) in pixels.frame_mut().chunks_exact_mut(4).enumerate() {
-                let color_index = fb[p]; // Get the 8-bit color index from the console's framebuffer
-                let (r, g, b, a) = COLOR_MAP[color_index as usize]; // Retrieve the corresponding RGBA color
-
-                // Map the color to the pixel's RGBA channels
-                pixel[0] = r; // R
-                pixel[1] = g; // G
-                pixel[2] = b; // B
-                pixel[3] = a; // A
-            }
-        } else {
-            error!("vblanked with no pixel buffer :grimacing:");
-        }
     }
 
     pub fn set_input_state(&mut self, key: Key, state: ElementState) {
@@ -242,5 +282,3 @@ impl Emulator<'_> {
         }
     }
 }
-
-

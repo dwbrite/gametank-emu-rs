@@ -7,18 +7,21 @@ edition = "2021"
 lto = true
 
 [dependencies]
-pixels = { git="https://github.com/dwbrite/pixels-fork" }
-winit = { version = "0.30.5", features = []}
-#winit_input_helper = "0.16.0"
+# app shit
+winit = { version = "0.30.5", features = ["rwh_06"] }
+raw-window-handle = "0.6"
+egui = { version = "0.29" }
+egui-wgpu = { version = "0.29",features = ["winit"] }
+egui-winit = { version = "0.29", default-features = false, features = ["links", "wayland", "x11"] }
+wgpu = { version = "22.1", features = ["webgl", "webgpu"] }
 
-# just wasm things
-console_error_panic_hook = "0.1"
-wee_alloc = "0.4.5"
-wasm-bindgen = "0.2.95"
-web-sys = { version = "0.3.72", features = ["Performance"] }
+# emulation
+w65c02s = "0.9.2"
+rand = { version = "0.8.5" } # do I need both of these?
 getrandom = { version = "0.2.12", features = ["js"] } # is this a wasm thing?
-
-wgpu = { version = "22.1.0", features = ["webgl", "fragile-send-sync-non-atomic-wasm"] }
+bit_field = "0.10.2"
+bitfield = "0.14.0"
+bytemuck = "1.19.0"
 
 # logging / profiling
 tracing = "0.1.40"
@@ -26,9 +29,9 @@ tracing-subscriber = "0.3.18"
 tracing-wasm = "0.2.1"
 
 # audio sybsystem
+enum_delegate = "0.2.0"
 klingt = { path = "../klingt", features = [] }
 rtrb = "0.3.1"
-enum_delegate = "0.2.0"
 petgraph = "0.5.1"
 dasp_graph = "0.11.0"
 dasp_signal = "0.11.0"
@@ -36,13 +39,15 @@ dasp_interpolate = {  version = "0.11.0", features = ["linear", "sinc"] }
 dasp_frame = "0.11.0"
 dasp_ring_buffer = "0.11.0"
 
+# async, mostly for wgpu
+futures = "0.3.31"
+pollster = "0.3.0"
 
-futures = "0.3.30"
-wasm-bindgen-futures = "0.4.41"
-rand = { version = "0.8.5" }
+# just wasm things
+console_error_panic_hook = "0.1"
+wee_alloc = "0.4.5"
 
-w65c02s = "0.9.2"
-bit_field = "0.10.2"
-bitfield = "0.14.0"
-bytemuck = "1.19.0"
-log = "0.4.20"
+wasm-bindgen = "0.2.95"
+wasm-bindgen-futures = "0.4.45"
+web-sys = { version = "0.3.72", features = ["Performance"] }
+
