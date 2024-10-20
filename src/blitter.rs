@@ -7,10 +7,12 @@ pub struct Blitter {
     src_y: u8,
     dst_y: u8,
     height: u8,
+    flip_y: bool,
 
     src_x: u8,
     dst_x: u8,
     width: u8,
+    flip_x: bool,
 
     offset_x: u8,
     offset_y: u8,
@@ -29,9 +31,11 @@ impl Blitter {
             src_y: 0,
             dst_y: 0,
             height: 0,
+            flip_y: false,
             src_x: 0,
             dst_x: 0,
             width: 0,
+            flip_x: false,
             offset_x: 0,
             offset_y: 0,
             color_fill: false,
@@ -62,7 +66,8 @@ impl Blitter {
             bus.blitter.start = 0;
             self.src_y = bus.blitter.gy;
             self.dst_y = bus.blitter.vy;
-            self.height = bus.blitter.height;
+            self.height = bus.blitter.height & 0b01111111;
+            self.flip_y = bus.blitter.height & 0b10000000 != 0;
             self.color = !bus.blitter.color;
             self.color_fill = bus.system_control.dma_flags.dma_colorfill_enable();
             self.blitting = true;
@@ -85,28 +90,16 @@ impl Blitter {
 
         self.src_x = bus.blitter.gx;
         self.dst_x = bus.blitter.vx;
-        self.width = bus.blitter.width;
+        self.width = bus.blitter.width & 0b01111111;
+        self.flip_x = bus.blitter.width & 0b10000000 != 0;
 
         if self.offset_x >= self.width {
-            if self.width >= 128 {
-                self.offset_x = self.width - 128;
-            } else {
-                self.offset_x = 0;
-            }
-
-            if self.height >= 128 {
-                self.offset_y -= 1;
-            } else {
-                self.offset_y += 1;
-            }
+            self.offset_x = 0;
+            self.offset_y += 1;
         }
 
         if self.offset_y >= self.height {
-            if self.height >= 128 {
-                self.offset_y = self.height - 128;
-            } else {
-                self.offset_y = 0;
-            }
+            self.offset_y = 0;
 
             self.blitting = false;
             bus.blitter.start = 0;
@@ -133,31 +126,28 @@ impl Blitter {
         } else {
             let vram_page = bus.system_control.banking_register.vram_page() as usize;
 
-            let mut src_x_mod = if self.src_x >= 128 {
-                self.src_x - 128
-            } else {
-                self.src_x
-            };
+            let mut src_x_mod = self.src_x;
 
-            let mut src_y_mod = if self.src_y >= 128 {
-                self.src_y - 128
-            } else {
-                self.src_y
-            };
+            let mut src_y_mod = self.src_y;
 
-            if self.width >= 128 {
-                src_x_mod = src_x_mod.wrapping_sub(self.width);
+            let mut blit_src_x = 0;
+            let mut blit_src_y = 0;
+
+            if self.flip_x {
+                src_x_mod = !src_x_mod;
+                blit_src_x = src_x_mod.wrapping_sub(self.offset_x) as usize;
+            } else {
+                blit_src_x = (src_x_mod.wrapping_add(self.offset_x)) as usize;
             }
 
-            if self.height >= 128 {
-                src_y_mod = src_y_mod.wrapping_sub(self.height);
+            if self.flip_y {
+                src_y_mod = !src_y_mod;
+                blit_src_y = (src_y_mod.wrapping_sub(self.offset_y)) as usize;
+            } else {
+                blit_src_y = (src_y_mod.wrapping_add(self.offset_y)) as usize;
             }
 
 
-
-
-            let mut blit_src_x = (src_x_mod.wrapping_add(self.offset_x)) as usize;
-            let mut blit_src_y = (src_y_mod.wrapping_add(self.offset_y)) as usize;
 
             // if gcarry is turned off, blits should tile 16x16
             if !bus.system_control.dma_flags.dma_gcarry() {
@@ -174,12 +164,7 @@ impl Blitter {
         let out_fb = bus.system_control.banking_register.framebuffer() as usize;
 
         if out_x >= 128 || out_y >= 128 {
-            // blitter is flipped
-            if self.width >= 128 {
-                self.offset_x = self.offset_x.wrapping_sub(1);
-            } else {
-                self.offset_x = self.offset_x.wrapping_add(1);
-            }
+            self.offset_x = self.offset_x.wrapping_add(1);
             return
         }
 
@@ -189,13 +174,7 @@ impl Blitter {
         }
 
         // increment x offset
-        // blitter is flipped
-        if self.width >= 128 {
-            self.offset_x = self.offset_x.wrapping_sub(1);
-            // warn!("flipped blitter: {:?}", self);
-        } else {
-            self.offset_x = self.offset_x.wrapping_add(1);
-        }
+        self.offset_x = self.offset_x.wrapping_add(1);
     }
 
     pub fn instant_blit(&mut self, bus: &mut CpuBus) {
