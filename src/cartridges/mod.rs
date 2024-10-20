@@ -11,6 +11,7 @@ pub trait Cartridge: Deref<Target = [u8; 0x8000]> + DerefMut {
     fn from_slice(slice: &[u8]) -> Self;
 }
 
+#[derive(Debug, Clone)]
 pub enum CartridgeType {
     Cart32k(Cartridge32K),
     Cart8k(Cartridge8K),

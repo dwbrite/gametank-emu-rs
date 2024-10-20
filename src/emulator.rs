@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use tracing::{debug, error, warn};
+use std::fmt::{Debug, Formatter};
+use tracing::{debug, error, instrument, warn};
 use w65c02s::State::AwaitingInterrupt;
 use w65c02s::W65C02S;
 use winit::event::ElementState;
@@ -18,6 +19,7 @@ use crate::PlayState::{Paused, Playing, WasmInit};
 
 pub const WIDTH: u32 = 128;
 pub const HEIGHT: u32 = 128;
+
 
 pub struct Emulator {
     pub cpu_bus: CpuBus,
@@ -41,6 +43,20 @@ pub struct Emulator {
     pub input_bindings: HashMap<Key, InputCommand>,
     pub input_state: HashMap<InputCommand, KeyState>
 }
+
+impl Debug for Emulator {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_struct("Emulator")
+            .field("cpu_bus", &self.cpu_bus)
+            .field("acp_bus", &self.acp_bus)
+            .field("cpu", &self.cpu)
+            .field("acp", &self.acp)
+            .field("blitter", &self.blitter)
+            .field("clock_cycles_to_vblank", &self.clock_cycles_to_vblank)
+            .field("last_emu_tick", &self.last_emu_tick);
+
+        Ok(())
+    }}
 
 impl Emulator {
     pub fn wasm_init(&mut self) {
@@ -159,7 +175,8 @@ impl Emulator {
             for _ in 0..cpu_cycles {
                 self.blitter.cycle(&mut self.cpu_bus);
             }
-            // TODO: self.blitter.instant_blit(&mut self.cpu_bus);
+            // TODO: instant blit option
+            // self.blitter.instant_blit(&mut self.cpu_bus);
 
             let blit_irq = self.blitter.clear_irq_trigger();
             self.cpu.set_irq(blit_irq);
@@ -224,8 +241,6 @@ impl Emulator {
         if self.cpu_bus.vblank_nmi_enabled() {
             self.cpu.set_nmi(true);
         }
-
-        let fb = self.cpu_bus.read_full_framebuffer();
     }
 
     pub fn set_input_state(&mut self, key: Key, state: ElementState) {
@@ -248,7 +263,7 @@ impl Emulator {
         for key in &keys {
             match key {
                 Controller1(button) => { self.set_gamepad_input(0, key, button); }
-                Controller2(button) => { self.set_gamepad_input(0, key, button); }
+                _Controller2(button) => { self.set_gamepad_input(0, key, button); }
                 PlayPause => {
                     if self.input_state[key] == JustReleased {
                         match self.play_state {

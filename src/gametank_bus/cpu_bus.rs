@@ -10,14 +10,14 @@ use crate::gametank_bus::reg_blitter::BlitterRegisters;
 use crate::gametank_bus::reg_etc::{new_framebuffer, BankingRegister, BlitterFlags, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer};
 use crate::gametank_bus::reg_system_control::SystemControl;
 
-const HELLO_WORLD_GTR: &[u8] = include_bytes!("../test_cartridges/hello.gtr");
-// const MICROVOID_GTR: &[u8] = include_bytes!("../test_cartridges/microvoid.gtr");
-const TETRIS_GTR: &[u8] = include_bytes!("../test_cartridges/tetris.gtr");
-const BADAPPLE_GTR: &[u8] = include_bytes!("../test_cartridges/badapple.gtr");
-const CUBICLE_GTR: &[u8] = include_bytes!("../test_cartridges/cubicle.gtr");
+const _HELLO_WORLD_GTR: &[u8] = include_bytes!("../test_cartridges/hello.gtr");
+const _MICROVOID_GTR: &[u8] = include_bytes!("../test_cartridges/microvoid.gtr");
+const _TETRIS_GTR: &[u8] = include_bytes!("../test_cartridges/tetris.gtr");
+const _BADAPPLE_GTR: &[u8] = include_bytes!("../test_cartridges/badapple.gtr");
+const _CUBICLE_GTR: &[u8] = include_bytes!("../test_cartridges/cubicle.gtr");
 
 
-#[derive()]
+#[derive(Debug)]
 pub struct CpuBus {
     cycles: u8,
 
@@ -63,7 +63,7 @@ impl Default for CpuBus {
             ram_banks: Box::new([[0; 0x2000 - 0x200]; 4]),
             framebuffers: [new_framebuffer(0x00), new_framebuffer(0xFF)],
             vram_banks: Box::new([[0; 256*256]; 8]),
-            cartridge: CartridgeType::from_slice(TETRIS_GTR),
+            cartridge: CartridgeType::from_slice(_CUBICLE_GTR),
             aram: Some(Box::new([0; 0x1000]))
         };
 

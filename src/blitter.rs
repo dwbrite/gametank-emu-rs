@@ -1,4 +1,5 @@
-use tracing::{debug};
+use std::intrinsics::{add_with_overflow, wrapping_add};
+use tracing::{debug, info, warn};
 use crate::gametank_bus::{CpuBus};
 
 #[derive(Debug)]
@@ -47,7 +48,7 @@ impl Blitter {
         result
     }
 
-    // TODO: fix blitter math
+    // TODO: blitter flipping
     pub fn cycle(&mut self, bus: &mut CpuBus) {
         debug!(target: "blitter", "{:?}", self);
 
@@ -87,12 +88,26 @@ impl Blitter {
         self.width = bus.blitter.width;
 
         if self.offset_x >= self.width {
-            self.offset_x = 0;
-            self.offset_y += 1;
+            if self.width >= 128 {
+                self.offset_x = self.width - 128;
+            } else {
+                self.offset_x = 0;
+            }
+
+            if self.height >= 128 {
+                self.offset_y -= 1;
+            } else {
+                self.offset_y += 1;
+            }
         }
 
         if self.offset_y >= self.height {
-            self.offset_y = 0;
+            if self.height >= 128 {
+                self.offset_y = self.height - 128;
+            } else {
+                self.offset_y = 0;
+            }
+
             self.blitting = false;
             bus.blitter.start = 0;
             debug!("blit complete, copied {} pixels", self.cycles);
@@ -118,23 +133,31 @@ impl Blitter {
         } else {
             let vram_page = bus.system_control.banking_register.vram_page() as usize;
 
-            let src_x_mod = if self.src_x >= 128 {
+            let mut src_x_mod = if self.src_x >= 128 {
                 self.src_x - 128
             } else {
                 self.src_x
             };
 
-            let src_y_mod = if self.src_y >= 128 {
+            let mut src_y_mod = if self.src_y >= 128 {
                 self.src_y - 128
             } else {
                 self.src_y
             };
 
+            if self.width >= 128 {
+                src_x_mod = src_x_mod.wrapping_sub(self.width);
+            }
+
+            if self.height >= 128 {
+                src_y_mod = src_y_mod.wrapping_sub(self.height);
+            }
 
 
 
-            let mut blit_src_x = (src_x_mod + self.offset_x) as usize;
-            let mut blit_src_y = (src_y_mod + self.offset_y) as usize;
+
+            let mut blit_src_x = (src_x_mod.wrapping_add(self.offset_x)) as usize;
+            let mut blit_src_y = (src_y_mod.wrapping_add(self.offset_y)) as usize;
 
             // if gcarry is turned off, blits should tile 16x16
             if !bus.system_control.dma_flags.dma_gcarry() {
@@ -146,12 +169,17 @@ impl Blitter {
             bus.vram_banks[vram_page][blit_src_x + blit_src_y*128]
         };
 
-        let out_x = (self.dst_x + self.offset_x) as usize;
+        let out_x = wrapping_add(self.dst_x, self.offset_x) as usize;
         let out_y = (self.dst_y + self.offset_y) as usize;
         let out_fb = bus.system_control.banking_register.framebuffer() as usize;
 
         if out_x >= 128 || out_y >= 128 {
-            self.offset_x +=1;
+            // blitter is flipped
+            if self.width >= 128 {
+                self.offset_x = self.offset_x.wrapping_sub(1);
+            } else {
+                self.offset_x = self.offset_x.wrapping_add(1);
+            }
             return
         }
 
@@ -161,7 +189,13 @@ impl Blitter {
         }
 
         // increment x offset
-        self.offset_x += 1;
+        // blitter is flipped
+        if self.width >= 128 {
+            self.offset_x = self.offset_x.wrapping_sub(1);
+            // warn!("flipped blitter: {:?}", self);
+        } else {
+            self.offset_x = self.offset_x.wrapping_add(1);
+        }
     }
 
     pub fn instant_blit(&mut self, bus: &mut CpuBus) {

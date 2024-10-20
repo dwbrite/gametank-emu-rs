@@ -1,6 +1,6 @@
 use KeyState::{Held, JustPressed, JustReleased, Released};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[derive(Eq, Hash, PartialEq)]
 pub enum ControllerButton {
     Up,
@@ -13,17 +13,17 @@ pub enum ControllerButton {
     C,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[derive(Eq, Hash, PartialEq)]
 pub enum InputCommand {
     Controller1(ControllerButton),
-    Controller2(ControllerButton),
+    _Controller2(ControllerButton),
     PlayPause,
     SoftReset,
     HardReset,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[derive(Eq, Hash, PartialEq)]
 pub enum KeyState {
     JustPressed,

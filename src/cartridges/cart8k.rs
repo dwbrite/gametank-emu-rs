@@ -1,8 +1,9 @@
 use std::ops::{Deref, DerefMut};
 use crate::cartridges::Cartridge;
 
+#[derive(Debug, Clone)]
 pub struct Cartridge8K {
-    data: [u8; 0x8000]
+    data: Box<[u8; 0x8000]>
 }
 
 impl Deref for Cartridge8K {
@@ -24,7 +25,7 @@ impl Cartridge for Cartridge8K {
         let mut data = [0; 0x8000];
         data[0x6000..0x8000].copy_from_slice(&slice);
         Self {
-            data,
+            data: Box::new(data),
         }
     }
 }

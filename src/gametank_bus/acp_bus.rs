@@ -4,7 +4,7 @@ use crate::Bus;
 
 pub(crate) type ARAM = Box<[u8; 0x1000]>;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct AcpBus {
     cycles: u8,
     pub irq_counter: i32,

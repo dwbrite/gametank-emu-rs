@@ -1,10 +1,12 @@
 use std::ops::{Deref, DerefMut};
 use crate::cartridges::Cartridge;
 
+
+#[derive(Debug, Clone)]
 pub struct Cartridge2M {
-    data: [u8; 0x200000],
-    slice: [u8; 0x8000],
-    current_page: u8,
+    _data: Box<[u8; 0x200000]>,
+    slice: Box<[u8; 0x8000]>,
+    _current_page: u8,
 }
 
 impl Deref for Cartridge2M {
@@ -25,15 +27,15 @@ impl DerefMut for Cartridge2M {
 // TODO: VIA
 impl Cartridge for Cartridge2M {
     fn from_slice(slice: &[u8]) -> Self {
-        let mut data = [0u8; 0x200000];
-        data.copy_from_slice(&slice);
+        let mut _data = [0u8; 0x200000];
+        _data.copy_from_slice(&slice);
         
         let mut slice = [0u8; 0x8000];
-        slice[0..0x8000].copy_from_slice(&data[(0x200000-0x8000)..(0x200000)]);
+        slice[0..0x8000].copy_from_slice(&_data[(0x200000-0x8000)..(0x200000)]);
         Self {
-            data,
-            slice,
-            current_page: 127,
+            _data: Box::new(_data),
+            slice: Box::new(slice),
+            _current_page: 127,
         }
     }
 }

@@ -1,10 +1,6 @@
-use std::cell::RefCell;
-use std::future::Future;
-use std::rc::Rc;
 use std::sync::{mpsc, Arc};
-use std::time::Duration;
-use egui::Context;
-
+use egui::{epaint, Color32, TextureHandle, TextureOptions, Ui};
+use egui::UiKind::CentralPanel;
 use winit::application::ApplicationHandler;
 use winit::event_loop::ActiveEventLoop;
 #[cfg(target_arch = "wasm32")]
@@ -12,13 +8,13 @@ use winit::platform::web::EventLoopExtWebSys;
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use egui_wgpu::{wgpu as wgpu, ScreenDescriptor};
-use egui_wgpu::wgpu::{Features, Limits, MemoryHints};
-use futures::{SinkExt, TryStreamExt};
-use tracing::{debug, error, info, warn};
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
+use egui_wgpu::wgpu::{Limits, MemoryHints};
+use tracing::{debug, info, warn};
 use winit::dpi::LogicalSize;
 use winit::event::{KeyEvent, WindowEvent};
+use crate::app_ui::gametankboy::GameTankBoyUI;
+// use crate::app_ui::ui_gametank;
+use crate::color_map::COLOR_MAP;
 use crate::egui_renderer::EguiRenderer;
 use crate::emulator::{Emulator, HEIGHT, WIDTH};
 use crate::graphics::GraphicsContext;
@@ -28,6 +24,7 @@ pub struct App {
     pub gc: Option<GraphicsContext>,
     pub window: Option<Arc<Window>>,
     pub egui_renderer: Option<EguiRenderer>,
+    pub gui: Option<GameTankBoyUI>,
 
     pub gc_tx: mpsc::Sender<GraphicsContext>,
     pub gc_rx: mpsc::Receiver<GraphicsContext>,
@@ -41,6 +38,7 @@ impl App {
             gc: None,
             window: None,
             egui_renderer: None,
+            gui: None,
             gc_tx: tx,
             gc_rx: rx,
         }
@@ -48,6 +46,7 @@ impl App {
 
     fn init_window(&mut self, event_loop: &ActiveEventLoop) {
         info!("initializing...");
+        #[allow(unused_mut)]
         let mut window_attributes = WindowAttributes::default()
             .with_title("GameTank!")
             .with_inner_size(LogicalSize::new(WIDTH*2, HEIGHT*2))
@@ -98,93 +97,83 @@ impl App {
     }
 
     fn handle_redraw(&mut self) {
-        if self.gc.is_none() {
-            info!("redrawing but no gc :(");
-            return
-        }
+        if let Some(gc) = self.gc.as_mut() {
+            // Fetch the framebuffer data from the emulator
+            let framebuffer = self.emulator.cpu_bus.read_full_framebuffer();
 
-        let gc = self.gc.as_mut().unwrap();
+            // Convert framebuffer to ColorImage
+            let color_image = self.framebuffer_to_color_image(&framebuffer);
 
-        let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: [gc.surface_config.width, gc.surface_config.height],
-            pixels_per_point: self.window.as_ref().unwrap().scale_factor() as f32 * 1.0, // TODO: scale factor?
-        };
+            let gc = self.gc.as_mut().unwrap();
 
-        let surface_texture = gc
-            .surface
-            .get_current_texture()
-            .expect("Failed to acquire next swap chain texture");
+            let screen_descriptor = ScreenDescriptor {
+                size_in_pixels: [gc.surface_config.width, gc.surface_config.height],
+                pixels_per_point: self.window.as_ref().unwrap().scale_factor() as f32 * 1.0, // TODO: scale factor?
+            };
 
-        let surface_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+            let surface_texture = gc
+                .surface
+                .get_current_texture()
+                .expect("Failed to acquire next swap chain texture");
 
-        let mut encoder = gc
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            let surface_view = surface_texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let window = self.window.as_ref().unwrap();
+            let mut encoder = gc
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        if let Some(egui_renderer) = self.egui_renderer.as_mut() {
-            egui_renderer.begin_frame(window);
+            let window = self.window.as_ref().unwrap();
 
-            egui::CentralPanel::default().show(egui_renderer.context(), |ui| {
-                // ui.label("Hello, world!");
-                
-                // divide the screen a top half and bottom half
-                ui.vertical(|ui| {
-                    ui.horizontal_centered(|ui| {
-                        ui.add(egui::widgets::Label::new("1"));
-                        ui.vertical(|ui| {
-                            // Calculate the size of the game square based on the window dimensions
-                            let available_width = ui.available_width();
-                            let available_height = ui.available_height();
-                            let min_dimension = available_width.min(available_height);
-                            let game_size = (min_dimension / 128.0).floor() * 128.0;
-                            let game_rect = egui::Rect::from_min_size(ui.min_rect().min, [game_size, game_size].into());
+            if let Some(egui_renderer) = self.egui_renderer.as_mut() {
+                if let Some(gui) = self.gui.as_mut() {
+                    gui.update_screen(egui_renderer, color_image);
+                } else {
+                    self.gui = Some(GameTankBoyUI::init(egui_renderer, color_image));
+                }
 
-                            // Adjust UI to allocate the square space for the game
-                            ui.allocate_space(game_rect.size());
+                egui_renderer.begin_frame(window);
+                let frame = egui::Frame {
+                    inner_margin: egui::Margin::same(0.0),
+                    outer_margin: egui::Margin::same(0.0),
+                    rounding: egui::Rounding::same(0.0),
+                    shadow: epaint::Shadow::default(),
+                    ..Default::default()
+                };
 
-                            // Draw the game area (for illustrative purposes, we are using a label here)
-                            ui.put(game_rect, egui::Label::new("game"));
+                egui::CentralPanel::default().frame(frame).show(egui_renderer.context(), |ui| {
+                    let panel_rect = ui.available_rect_before_wrap();
+                    ui.painter().rect_filled(panel_rect, 0.0, Color32::from_rgb(227, 120, 30));
+                    ui.vertical(|ui| {
+                        ui.horizontal_centered(|ui| {
+                            // ui.add(egui::widgets::Label::new("1"));
+                            if let Some(gui) = self.gui.as_mut() {
+                                gui.draw(ui);
+                            }
+                            // ui_gametank(&game_texture, ui);
 
-                            // Draw a border around the game area
-                            let stroke = egui::Stroke {
-                                width: 2.0,                    // Border width
-                                color: egui::Color32::WHITE,   // Border color
-                            };
-                            ui.painter().rect_stroke(game_rect, 0.0, stroke);
 
-                            // Controls should occupy the rest of the vertical space
-                            ui.label("controls");
-                            // Or dynamically fill remaining space with a scrolling area for more controls
-                            egui::ScrollArea::vertical().show(ui, |ui| {
-                                ui.label("Control 1");
-                                ui.label("Control 2");
-                                // Add more controls as needed
-                            });
+                            // ui.add(egui::widgets::Label::new("3"));
                         });
-                        ui.allocate_space(egui::Vec2::new(ui.available_width(), ui.available_size_before_wrap().y / 2.0));
-                        ui.add(egui::widgets::Label::new("3"));
+                        ui.add(egui::widgets::Separator::default());
+                        ui.add(egui::widgets::Label::new("Bottom Half"));
                     });
-                    ui.add(egui::widgets::Separator::default());
-                    ui.add(egui::widgets::Label::new("Bottom Half"));
                 });
-            });
 
-            egui_renderer.end_frame_and_draw(
-                &gc.device,
-                &gc.queue,
-                &mut encoder,
-                window,
-                &surface_view,
-                screen_descriptor,
-            );
+                egui_renderer.end_frame_and_draw(
+                    &gc.device,
+                    &gc.queue,
+                    &mut encoder,
+                    window,
+                    &surface_view,
+                    screen_descriptor,
+                );
+            }
+
+            gc.queue.submit(Some(encoder.finish()));
+            surface_texture.present();
         }
-
-        gc.queue.submit(Some(encoder.finish()));
-        surface_texture.present();
     }
 
     fn handle_resized(&mut self, width: u32, height: u32) {
@@ -200,6 +189,20 @@ impl App {
         gc.surface_config.height = height;
         gc.surface.configure(&gc.device, &gc.surface_config);
     }
+
+    fn framebuffer_to_color_image(&self, framebuffer: &[u8; 128*128]) -> egui::ColorImage {
+        let mut pixels: Vec<u8> = Vec::with_capacity(128 * 128 * 4); // 4 channels per pixel (RGBA)
+
+        for &index in framebuffer.iter() {
+            let (r, g, b, a) = COLOR_MAP[index as usize];
+            pixels.push(r);
+            pixels.push(g);
+            pixels.push(b);
+            pixels.push(a);
+        }
+
+        egui::ColorImage::from_rgba_unmultiplied([128, 128], &pixels)
+    }
 }
 
 impl ApplicationHandler for App {
@@ -210,6 +213,8 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        self.emulator.process_cycles(false);
+
         // let egui_renderer process the event first
         if let Some(egui_renderer) = self.egui_renderer.as_mut() {
             egui_renderer.handle_input(self.window.as_ref().unwrap(), &event);
@@ -242,12 +247,12 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
         if self.gc.is_none() {
             return;
         }
 
-        let gc = self.gc.as_mut().unwrap();
+        // let _gc = self.gc.as_mut().unwrap();
 
         debug!("about to wait; processing");
         self.emulator.process_cycles(false);

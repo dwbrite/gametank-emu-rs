@@ -39,13 +39,11 @@ impl Signal for GameTankSignal {
     }
 }
 
-
 #[derive(Debug)]
 pub struct RtrbSource {
     output_buffer: Consumer<Buffer>
 }
 
-#[derive()]
 pub struct GameTankAudio {
     pub producer: Producer<u8>,
 
@@ -105,7 +103,7 @@ impl GameTankAudio {
         }
 
         while self.resampled.len() >= 64 && self.output_queue.slots() >= 8 {
-            if let Some(chunk) = self.resampled.drain(..64).collect::<Vec<_>>().try_into().ok() {
+            if let Ok(chunk) = self.resampled.drain(..64).collect::<Vec<_>>().try_into() {
                 let mut buf = Buffer::SILENT;
                 for (b, v) in buf.iter_mut().zip::<[f32;64]>(chunk) {
                     *b = v;

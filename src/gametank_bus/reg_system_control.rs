@@ -50,7 +50,7 @@ impl SystemControl {
             0x2000 => { self.reset_acp = data } // TODO: reset acp
             0x2001 => { self.nmi_acp = data } // TODO: nmi acp
             0x2005 => { self.banking_register.0 = data }
-            0x2006 => { self.audio_enable_sample_rate = data } // TODO: ???
+            0x2006 => { self.audio_enable_sample_rate = data }
             0x2007 => { self.dma_flags.0 = data }
             _ => {
                 warn!("Attempted to write read-only memory at: ${:02X}", address);

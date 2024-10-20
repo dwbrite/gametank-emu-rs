@@ -1,5 +1,8 @@
 #![feature(exclusive_range_pattern)]
+#![feature(inline_const)]
+#![feature(core_intrinsics)]
 #![allow(clippy::disallowed_methods, clippy::single_match)]
+#[allow(clippy::unusual_byte_groupings)]
 
 mod color_map;
 mod blitter;
@@ -13,6 +16,7 @@ mod input;
 mod app;
 mod egui_renderer;
 mod graphics;
+mod app_ui;
 
 use std::cmp::PartialEq;
 use tracing::{info, Level};
@@ -88,16 +92,21 @@ pub fn wasm_main() {
 }
 
 pub fn main() {
-    setup_logging();
-    info!("stdout logger started");
+    #[cfg(not(target_arch = "wasm32"))] {
+        setup_logging();
+        info!("stdout logger started");
 
-    let event_loop = EventLoop::<()>::with_user_event().build().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
+        let event_loop = EventLoop::<()>::with_user_event().build().unwrap();
+        event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = App::new();
-    app.emulator.play_state = Playing;
+        use thread_priority::*;
+        set_current_thread_priority(ThreadPriority::Max); // if it didn't work, oh well
 
-    let _ = event_loop.run_app(&mut app);
+        let mut app = App::new();
+        app.emulator.play_state = Playing;
+
+        let _ = event_loop.run_app(&mut app);
+    }
 }
 
 pub fn spawn<F>(future: F)

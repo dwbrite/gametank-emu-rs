@@ -31,7 +31,7 @@ impl EguiRenderer {
             &window,
             Some(window.scale_factor() as f32),
             None,
-            Some(2 * 1024), // default dimension is 2048
+            None,
         );
         let egui_renderer = Renderer::new(
             device,

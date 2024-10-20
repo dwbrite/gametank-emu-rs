@@ -4,7 +4,7 @@ use wgpu::{Features, Limits, MemoryHints};
 use crate::emulator::{HEIGHT, WIDTH};
 
 pub struct GraphicsContext {
-    pub instance: wgpu::Instance,
+    pub _instance: wgpu::Instance,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub surface_config: wgpu::SurfaceConfiguration,
@@ -23,11 +23,15 @@ impl GraphicsContext {
         }).await.unwrap();
 
         let features = Features::default();
+        
+        let mut limits = Limits::downlevel_webgl2_defaults();
+        limits.max_texture_dimension_1d = 16384;
+        limits.max_texture_dimension_2d = 16384;
 
         let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
             label: None,
             required_features: features,
-            required_limits: Limits::downlevel_webgl2_defaults(),
+            required_limits: limits,
             memory_hints: MemoryHints::default(),
         }, None).await.unwrap();
 
@@ -52,7 +56,7 @@ impl GraphicsContext {
         surface.configure(&device, &surface_config);
 
         Self {
-            instance,
+            _instance: instance,
             device,
             queue,
             surface_config,
