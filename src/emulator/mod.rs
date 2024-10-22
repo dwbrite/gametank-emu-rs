@@ -5,17 +5,25 @@ use w65c02s::State::AwaitingInterrupt;
 use w65c02s::W65C02S;
 use winit::event::ElementState;
 use winit::keyboard::{Key, NamedKey, SmolStr};
-use crate::audio_output::GameTankAudio;
-use crate::blitter::Blitter;
-use crate::{Bus, PlayState};
+use crate::emulator::audio_output::GameTankAudio;
+use crate::emulator::blitter::Blitter;
+use crate::emulator::gametank_bus::{AcpBus, Bus, CpuBus};
 use crate::input::ControllerButton::*;
 use crate::input::InputCommand::*;
 use crate::input::KeyState::JustReleased;
-use crate::gametank_bus::{AcpBus, CpuBus};
 use crate::helpers::get_now_ms;
 use crate::input::{ControllerButton, InputCommand, KeyState};
+use crate::PlayState;
 use crate::PlayState::{Paused, Playing, WasmInit};
 
+#[allow(clippy::unusual_byte_groupings)]
+
+pub mod color_map;
+pub mod blitter;
+pub mod audio_output;
+pub mod gamepad;
+pub mod gametank_bus;
+mod cartridges;
 
 pub const WIDTH: u32 = 128;
 pub const HEIGHT: u32 = 128;

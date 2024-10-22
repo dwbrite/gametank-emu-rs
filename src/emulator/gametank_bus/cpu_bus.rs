@@ -3,14 +3,15 @@ use rand::{thread_rng, Rng};
 use std::cell::Ref;
 use tracing::warn;
 use web_sys::js_sys::Atomics::add;
-use crate::Bus;
-use crate::cartridges::cart2m::Cartridge2M;
-use crate::cartridges::CartridgeType;
-use crate::gamepad::GamePad;
-use crate::gametank_bus::ARAM;
-use crate::gametank_bus::reg_blitter::BlitterRegisters;
-use crate::gametank_bus::reg_etc::{new_framebuffer, BankingRegister, BlitterFlags, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer};
-use crate::gametank_bus::reg_system_control::*;
+use crate::emulator::cartridges::cart2m::Cartridge2M;
+use crate::emulator::cartridges::CartridgeType;
+use crate::emulator::gametank_bus::Bus;
+use crate::emulator::gametank_bus::reg_system_control::*;
+use crate::emulator::gamepad::GamePad;
+use crate::emulator::gametank_bus::ARAM;
+use crate::emulator::gametank_bus::reg_blitter::BlitterRegisters;
+use crate::emulator::gametank_bus::reg_etc::{new_framebuffer, BankingRegister, BlitterFlags, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer};
+use crate::emulator::gametank_bus::reg_system_control::*;
 
 const _HELLO_WORLD_GTR: &[u8] = include_bytes!("../roms/hello.gtr");
 const _MICROVOID_GTR: &[u8] = include_bytes!("../roms/microvoid.gtr");
@@ -52,7 +53,7 @@ impl Default for CpuBus {
                 banking_register: BankingRegister(0),
                 via_regs: [0; 16],
                 audio_enable_sample_rate: 0,
-                dma_flags: BlitterFlags(0b0000_1000),
+                dma_flags: BlitterFlags(0b0111_1111),
                 gamepads: [GamePad::default(), GamePad::default()]
             },
             blitter: BlitterRegisters {
@@ -110,9 +111,6 @@ impl CpuBus {
                     }
                     cartridge.bank_mask = cartridge.bank_shifter as u16; // Update the bank mask
                     warn!("Flash bank mask set to 0x{:x}", cartridge.bank_mask);
-                    // cartridge.bank_mask |= 0x80; // Set the high bit if not in FLASH2M_RAM32K mode
-                    // Uncomment for debugging
-                    // println!("Flash highbits set to {:x}", cartridge.bank_mask);
                 }
             },
             _ => {} // do nothing

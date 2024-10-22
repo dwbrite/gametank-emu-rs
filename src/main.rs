@@ -2,16 +2,7 @@
 #![feature(inline_const)]
 #![feature(core_intrinsics)]
 #![allow(clippy::disallowed_methods, clippy::single_match)]
-#[allow(clippy::unusual_byte_groupings)]
-
-mod color_map;
-mod blitter;
-mod gametank_bus;
 mod helpers;
-mod audio_output;
-mod emulator;
-mod cartridges;
-mod gamepad;
 mod input;
 mod app_uninit;
 mod egui_renderer;
@@ -19,6 +10,8 @@ mod graphics;
 mod app_ui;
 mod app_initialized;
 mod app_delegation;
+
+mod emulator;
 
 use app_delegation::DelegatedApp::Uninitialized;
 use std::cmp::PartialEq;
@@ -39,7 +32,6 @@ use web_sys::{window, HtmlCanvasElement};
 use wasm_bindgen::JsCast;
 use std::future::Future;
 use crate::app_uninit::App;
-pub use crate::gametank_bus::Bus;
 use crate::PlayState::*;
 
 //
@@ -95,6 +87,14 @@ pub fn wasm_main() {
 }
 
 pub fn main() {
+    // welcome to the main function!
+    // If you want to see how the emulator works, the "main" modules are app_initialized and emulator.
+
+    // app_delegation and app_unitinitailized are used for initializing the app,
+    // namely grabbing winit/egui/wgpu resources.
+
+
+
     #[cfg(not(target_arch = "wasm32"))] {
         setup_logging();
         info!("stdout logger started");

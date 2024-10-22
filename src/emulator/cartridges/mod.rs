@@ -3,9 +3,9 @@ pub mod cart32k;
 pub mod cart2m;
 
 use std::ops::{Deref, DerefMut};
-use crate::cartridges::cart8k::Cartridge8K;
-use crate::cartridges::cart32k::{Cartridge32K};
-use crate::cartridges::cart2m::Cartridge2M;
+use crate::emulator::cartridges::cart8k::Cartridge8K;
+use crate::emulator::cartridges::cart32k::{Cartridge32K};
+use crate::emulator::cartridges::cart2m::Cartridge2M;
 
 pub trait Cartridge {
     fn from_slice(slice: &[u8]) -> Self;

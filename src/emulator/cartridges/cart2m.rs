@@ -1,6 +1,6 @@
 use std::intrinsics::transmute;
 use std::ops::{Deref, DerefMut};
-use crate::cartridges::Cartridge;
+use crate::emulator::cartridges::Cartridge;
 
 
 #[derive(Debug, Clone)]

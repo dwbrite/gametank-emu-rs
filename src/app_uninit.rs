@@ -15,7 +15,7 @@ use winit::event::{DeviceEvent, DeviceId, KeyEvent, StartCause, WindowEvent};
 use crate::app_initialized::AppInitialized;
 use crate::app_ui::gametankboy::GameTankBoyUI;
 // use crate::app_ui::ui_gametank;
-use crate::color_map::COLOR_MAP;
+use crate::emulator::color_map::COLOR_MAP;
 use crate::egui_renderer::EguiRenderer;
 use crate::emulator::{Emulator, HEIGHT, WIDTH};
 use crate::graphics::GraphicsContext;

@@ -1,6 +1,6 @@
 use tracing::{error};
 use w65c02s::{System, W65C02S};
-use crate::Bus;
+use crate::emulator::gametank_bus::Bus;
 
 pub(crate) type ARAM = Box<[u8; 0x1000]>;
 

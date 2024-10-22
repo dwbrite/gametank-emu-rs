@@ -1,6 +1,6 @@
 use std::intrinsics::{add_with_overflow, wrapping_add};
 use tracing::{debug, info, warn};
-use crate::gametank_bus::{CpuBus};
+use crate::emulator::gametank_bus::{CpuBus};
 
 #[derive(Debug)]
 pub struct Blitter {

@@ -8,7 +8,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 use crate::app_ui::gametankboy::GameTankBoyUI;
 use crate::app_uninit::App;
-use crate::color_map::COLOR_MAP;
+use crate::emulator::color_map::COLOR_MAP;
 use crate::egui_renderer::EguiRenderer;
 use crate::emulator::Emulator;
 use crate::graphics::GraphicsContext;
