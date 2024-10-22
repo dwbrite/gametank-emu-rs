@@ -14,7 +14,7 @@ impl Cartridge for Cartridge2M {
     fn from_slice(slice: &[u8]) -> Self {
         let mut data = [0u8; 0x4000*128];
         data.copy_from_slice(&slice);
-        let data: Box<[[u8; 0x4000]; 128]> = unsafe { transmute(slice.as_ptr()) };
+        let data: Box<[[u8; 0x4000]; 128]> = unsafe { Box::new(transmute(data)) };
         Self {
             data,
             bank_shifter: 0,

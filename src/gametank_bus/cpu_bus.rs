@@ -12,12 +12,12 @@ use crate::gametank_bus::reg_blitter::BlitterRegisters;
 use crate::gametank_bus::reg_etc::{new_framebuffer, BankingRegister, BlitterFlags, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer};
 use crate::gametank_bus::reg_system_control::*;
 
-const _HELLO_WORLD_GTR: &[u8] = include_bytes!("../test_cartridges/hello.gtr");
-const _MICROVOID_GTR: &[u8] = include_bytes!("../test_cartridges/microvoid.gtr");
-const _TETRIS_GTR: &[u8] = include_bytes!("../test_cartridges/tetris.gtr");
-const _BADAPPLE_GTR: &[u8] = include_bytes!("../test_cartridges/badapple.gtr");
-const _CUBICLE_GTR: &[u8] = include_bytes!("../test_cartridges/cubicle.gtr");
-const _GAME_GTR: &[u8] = include_bytes!("../test_cartridges/game.gtr");
+const _HELLO_WORLD_GTR: &[u8] = include_bytes!("../roms/hello.gtr");
+const _MICROVOID_GTR: &[u8] = include_bytes!("../roms/microvoid.gtr");
+const _TETRIS_GTR: &[u8] = include_bytes!("../roms/tetris.gtr");
+const _BADAPPLE_GTR: &[u8] = include_bytes!("../roms/badapple.gtr");
+const _CUBICLE_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
+const _GAME_GTR: &[u8] = include_bytes!("../roms/game.gtr");
 
 const CURRENT_GAME: &[u8] = _GAME_GTR;
 
