@@ -2,20 +2,24 @@ use w65c02s::{System, W65C02S};
 use rand::{thread_rng, Rng};
 use std::cell::Ref;
 use tracing::warn;
+use web_sys::js_sys::Atomics::add;
 use crate::Bus;
+use crate::cartridges::cart2m::Cartridge2M;
 use crate::cartridges::CartridgeType;
 use crate::gamepad::GamePad;
 use crate::gametank_bus::ARAM;
 use crate::gametank_bus::reg_blitter::BlitterRegisters;
 use crate::gametank_bus::reg_etc::{new_framebuffer, BankingRegister, BlitterFlags, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer};
-use crate::gametank_bus::reg_system_control::SystemControl;
+use crate::gametank_bus::reg_system_control::*;
 
 const _HELLO_WORLD_GTR: &[u8] = include_bytes!("../test_cartridges/hello.gtr");
 const _MICROVOID_GTR: &[u8] = include_bytes!("../test_cartridges/microvoid.gtr");
 const _TETRIS_GTR: &[u8] = include_bytes!("../test_cartridges/tetris.gtr");
 const _BADAPPLE_GTR: &[u8] = include_bytes!("../test_cartridges/badapple.gtr");
 const _CUBICLE_GTR: &[u8] = include_bytes!("../test_cartridges/cubicle.gtr");
+const _GAME_GTR: &[u8] = include_bytes!("../test_cartridges/game.gtr");
 
+const CURRENT_GAME: &[u8] = _GAME_GTR;
 
 #[derive(Debug)]
 pub struct CpuBus {
@@ -46,6 +50,7 @@ impl Default for CpuBus {
                 reset_acp: 0,
                 nmi_acp: 0,
                 banking_register: BankingRegister(0),
+                via_regs: [0; 16],
                 audio_enable_sample_rate: 0,
                 dma_flags: BlitterFlags(0b0000_1000),
                 gamepads: [GamePad::default(), GamePad::default()]
@@ -63,7 +68,7 @@ impl Default for CpuBus {
             ram_banks: Box::new([[0; 0x2000 - 0x200]; 4]),
             framebuffers: [new_framebuffer(0x00), new_framebuffer(0xFF)],
             vram_banks: Box::new([[0; 256*256]; 8]),
-            cartridge: CartridgeType::from_slice(_CUBICLE_GTR),
+            cartridge: CartridgeType::from_slice(CURRENT_GAME),
             aram: Some(Box::new([0; 0x1000]))
         };
 
@@ -84,6 +89,36 @@ impl CpuBus {
         let fb = self.system_control.get_framebuffer_out();
         return self.framebuffers[fb].borrow();
     }
+
+    fn update_flash_shift_register(&mut self, next_val: u8) {
+        match &mut self.cartridge {
+            CartridgeType::Cart2m(cartridge) => {
+                // For now, assuming that if we're using Flash2M hardware, we're behaving ourselves
+                let old_val = self.system_control.via_regs[VIA_IORA]; // Get the previous value from the VIA
+                let rising_bits = next_val & !old_val;
+
+                if rising_bits & VIA_SPI_BIT_CLK != 0 {
+                    cartridge.bank_shifter <<= 1; // Shift left
+                    cartridge.bank_shifter &= 0xFE; // Ensure the last bit is cleared
+                    cartridge.bank_shifter |= ((old_val & VIA_SPI_BIT_MOSI) != 0) as u8; // Set the last bit based on MOSI
+                } else if rising_bits & VIA_SPI_BIT_CS != 0 {
+                    // Flash cart CS is connected to latch clock
+                    if (cartridge.bank_mask ^ cartridge.bank_shifter as u16) & 0x80 != 0 {
+                        // TODO: support saving
+                        // self.save_nvram(); // Assuming this is defined elsewhere or is a method within CpuBus
+                        warn!("Saving is not yet supported");
+                    }
+                    cartridge.bank_mask = cartridge.bank_shifter as u16; // Update the bank mask
+                    warn!("Flash bank mask set to 0x{:x}", cartridge.bank_mask);
+                    // cartridge.bank_mask |= 0x80; // Set the high bit if not in FLASH2M_RAM32K mode
+                    // Uncomment for debugging
+                    // println!("Flash highbits set to {:x}", cartridge.bank_mask);
+                }
+            },
+            _ => {} // do nothing
+        }
+    }
+
     pub fn write_byte(&mut self, address: u16, data: u8) {
         match address {
             // zero page
@@ -110,7 +145,14 @@ impl CpuBus {
 
             // versatile interface adapter (GPIO, timers)
             0x2800..=0x280F => {
-                // TODO: unimplemented
+                let register = (address & 0xF) as usize;
+                match (address & 0xF) as usize {
+                    VIA_IORA => {
+                        self.update_flash_shift_register(data);
+                    }
+                    _ => {}
+                }
+                self.system_control.via_regs[register] = data;
             }
 
             // audio RAM
@@ -168,8 +210,8 @@ impl CpuBus {
 
             // versatile interface adapter (GPIO, timers)
             0x2800..=0x280F => {
-                // TODO: unimplemented
-
+                let register = (address & 0xF) as usize;
+                return self.system_control.via_regs[register]
             }
 
             // audio RAM
@@ -199,7 +241,7 @@ impl CpuBus {
 
             // Cartridge
             0x8000..=0xFFFF => {
-                return self.cartridge[address as usize - 0x8000]
+                return self.cartridge.read_byte(address - 0x8000);
             }
             _ => {
                 warn!("Attempted to inaccessible memory at: ${:02X}", address);

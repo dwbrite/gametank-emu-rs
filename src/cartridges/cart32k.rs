@@ -28,4 +28,8 @@ impl Cartridge for Cartridge32K {
             data: Box::new(data),
         }
     }
+
+    fn read_byte(&self, address: u16) -> u8 {
+        self.data[address as usize]
+    }
 }

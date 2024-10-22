@@ -1,43 +1,22 @@
-mod cart32k;
-mod cart8k;
-mod cart2m;
+pub mod cart8k;
+pub mod cart32k;
+pub mod cart2m;
 
 use std::ops::{Deref, DerefMut};
-use crate::cartridges::cart2m::Cartridge2M;
-use crate::cartridges::cart32k::{Cartridge32K};
 use crate::cartridges::cart8k::Cartridge8K;
+use crate::cartridges::cart32k::{Cartridge32K};
+use crate::cartridges::cart2m::Cartridge2M;
 
-pub trait Cartridge: Deref<Target = [u8; 0x8000]> + DerefMut {
+pub trait Cartridge {
     fn from_slice(slice: &[u8]) -> Self;
+    fn read_byte(&self, address: u16) -> u8;
 }
 
 #[derive(Debug, Clone)]
 pub enum CartridgeType {
-    Cart32k(Cartridge32K),
     Cart8k(Cartridge8K),
+    Cart32k(Cartridge32K),
     Cart2m(Box<Cartridge2M>),
-}
-
-impl Deref for CartridgeType {
-    type Target = [u8; 0x8000];
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            CartridgeType::Cart32k(inner) => {&inner}
-            CartridgeType::Cart8k(inner) => {&inner}
-            CartridgeType::Cart2m(inner) => {inner}
-        }
-    }
-}
-
-impl DerefMut for CartridgeType {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            CartridgeType::Cart32k(inner) => {inner}
-            CartridgeType::Cart8k(inner) => {inner}
-            CartridgeType::Cart2m(inner) => {inner}
-        }
-    }
 }
 
 impl CartridgeType {
@@ -55,6 +34,14 @@ impl CartridgeType {
             _ => {
                 panic!("unimplemented");
             }
+        }
+    }
+
+    pub fn read_byte(&self, address: u16) -> u8 {
+        match self {
+            CartridgeType::Cart8k(c) => {c.read_byte(address)}
+            CartridgeType::Cart32k(c) => {c.read_byte(address)}
+            CartridgeType::Cart2m(c) => {c.read_byte(address)}
         }
     }
 }

@@ -52,7 +52,6 @@ impl Blitter {
         result
     }
 
-    // TODO: blitter flipping
     pub fn cycle(&mut self, bus: &mut CpuBus) {
         debug!(target: "blitter", "{:?}", self);
 
@@ -146,8 +145,6 @@ impl Blitter {
             } else {
                 blit_src_y = (src_y_mod.wrapping_add(self.offset_y)) as usize;
             }
-
-
 
             // if gcarry is turned off, blits should tile 16x16
             if !bus.system_control.dma_flags.dma_gcarry() {

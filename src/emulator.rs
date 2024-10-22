@@ -201,12 +201,22 @@ impl Emulator {
 
     fn run_acp(&mut self, acp_cycle_accumulator: &mut i32) {
         self.acp_bus.aram = self.cpu_bus.aram.take();
+
+        if self.cpu_bus.system_control.clear_acp_reset() {
+            self.acp.reset();
+        }
+
+        if self.cpu_bus.system_control.clear_acp_nmi() {
+            self.acp.set_nmi(true);
+        }
+
         while *acp_cycle_accumulator > 0 {
             let _ = self.acp.step(&mut self.acp_bus);
             *acp_cycle_accumulator -= self.acp_bus.clear_cycles() as i32;
 
-            // clear irq
+            // clear stuff ig
             self.acp.set_irq(false);
+            self.acp.set_nmi(false);
 
             if self.acp_bus.irq_counter <= 0 {
                 self.acp_bus.irq_counter = self.cpu_bus.system_control.sample_rate() as i32 * 4;
