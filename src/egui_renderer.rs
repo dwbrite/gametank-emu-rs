@@ -4,11 +4,13 @@ use egui_wgpu::wgpu::{CommandEncoder, Device, Queue, StoreOp, TextureFormat, Tex
 use egui_winit::State;
 use winit::event::WindowEvent;
 use winit::window::Window;
+use crate::app_ui::gametankboy::GameTankBoyUI;
 
 pub struct EguiRenderer {
     state: State,
     renderer: Renderer,
     frame_started: bool,
+    // emu_gui: GameTankBoyUI,
 }
 
 impl EguiRenderer {
@@ -45,6 +47,7 @@ impl EguiRenderer {
             state: egui_state,
             renderer: egui_renderer,
             frame_started: false,
+            // emu_gui: GameTankBoyUI::init(egui_renderer, color_image),
         }
     }
 

@@ -13,11 +13,14 @@ mod emulator;
 mod cartridges;
 mod gamepad;
 mod input;
-mod app;
+mod app_uninit;
 mod egui_renderer;
 mod graphics;
 mod app_ui;
+mod app_initialized;
+mod app_delegation;
 
+use app_delegation::DelegatedApp::Uninitialized;
 use std::cmp::PartialEq;
 use tracing::{info, Level};
 use winit::event_loop::EventLoop;
@@ -35,7 +38,7 @@ use web_sys::{window, HtmlCanvasElement};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 use std::future::Future;
-use crate::app::App;
+use crate::app_uninit::App;
 pub use crate::gametank_bus::Bus;
 use crate::PlayState::*;
 
@@ -86,7 +89,7 @@ pub fn wasm_main() {
     let event_loop = EventLoop::<()>::with_user_event().build().unwrap();
     event_loop.set_control_flow(ControlFlow::Wait);
 
-    let app = App::new();
+    let app = Uninitialized(App::new());
 
     let _ = event_loop.spawn_app(app);
 }
@@ -102,8 +105,8 @@ pub fn main() {
         use thread_priority::*;
         set_current_thread_priority(ThreadPriority::Max); // if it didn't work, oh well
 
-        let mut app = App::new();
-        app.emulator.play_state = Playing;
+        let mut app = Uninitialized(App::new());
+        // TODO: app.emulator.as_mut().unwrap().play_state = Playing;
 
         let _ = event_loop.run_app(&mut app);
     }

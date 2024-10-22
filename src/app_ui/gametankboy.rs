@@ -1,4 +1,4 @@
-use egui::{Button, Color32, ColorImage, ImageOptions, TextureHandle, TextureOptions, Ui, Vec2, Widget};
+use egui::{Button, Color32, ColorImage, Context, ImageOptions, TextureHandle, TextureOptions, Ui, Vec2, Widget};
 use image::GenericImageView;
 use crate::egui_renderer::EguiRenderer;
 use crate::graphics::GraphicsContext;
@@ -41,10 +41,10 @@ fn load_png_to_image(path: &str) -> ColorImage {
 }
 
 impl GameTankBoyUI {
-    pub fn init(egui_renderer: &mut EguiRenderer, color_image: ColorImage) -> Self {
+    pub fn init(context: &Context, color_image: ColorImage) -> Self {
         let options = TextureOptions::NEAREST;
 
-        let game_texture = egui_renderer.context().load_texture("game_texture", color_image, TextureOptions::NEAREST);
+        let game_texture = context.load_texture("game_texture", color_image, TextureOptions::NEAREST);
 
         // TODO: can't load from file on web, include_bytes!()
         // let power1 = egui_renderer.context().load_texture("power_released", load_png_to_image("src/assets/POWER1.png"), options);
@@ -56,8 +56,8 @@ impl GameTankBoyUI {
         }
     }
 
-    pub fn update_screen(&mut self, egui_renderer: &mut EguiRenderer, color_image: ColorImage) {
-        let game_texture = egui_renderer.context().load_texture("game_texture", color_image, TextureOptions::NEAREST);
+    pub fn update_screen(&mut self, context: &Context, color_image: ColorImage) {
+        let game_texture = context.load_texture("game_texture", color_image, TextureOptions::NEAREST);
         self.screen = game_texture;
     }
 
