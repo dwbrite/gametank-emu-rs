@@ -1,9 +1,12 @@
 use std::intrinsics::{add_with_overflow, wrapping_add};
+use std::time::Instant;
 use tracing::{debug, info, warn};
 use crate::emulator::gametank_bus::{CpuBus};
 
 #[derive(Debug)]
 pub struct Blitter {
+    // start_time: Instant,
+
     src_y: u8,
     dst_y: u8,
     height: u8,
@@ -54,15 +57,17 @@ impl Blitter {
 
     pub fn cycle(&mut self, bus: &mut CpuBus) {
         debug!(target: "blitter", "{:?}", self);
-
-        if self.blitting && bus.blitter.start == 1 {
-            debug!("updated blitter after processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
-            bus.blitter.start = 0;
-        }
+        // 
+        // if self.blitting && bus.blitter.start == 1 {
+        //     // warn!("start on blitter after processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
+        //     // bus.blitter.start = 0;
+        // }
 
         // load y at blitter start
         if !self.blitting && bus.blitter.start != 0 {
-            bus.blitter.start = 0;
+            // self.start_time = Instant::now();
+            // bus.blitter.start = 0;
+            self.irq_trigger = false;
             self.src_y = bus.blitter.gy;
             self.dst_y = bus.blitter.vy;
             self.height = bus.blitter.height & 0b01111111;

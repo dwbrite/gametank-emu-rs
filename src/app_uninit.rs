@@ -17,7 +17,7 @@ use crate::app_ui::gametankboy::GameTankBoyUI;
 // use crate::app_ui::ui_gametank;
 use crate::emulator::color_map::COLOR_MAP;
 use crate::egui_renderer::EguiRenderer;
-use crate::emulator::{Emulator, HEIGHT, WIDTH};
+use crate::emulator::emulator::{Emulator, HEIGHT, WIDTH};
 use crate::graphics::GraphicsContext;
 
 pub struct App {
@@ -56,7 +56,7 @@ impl App {
         info!("initializing...");
         #[allow(unused_mut)]
         let mut window_attributes = WindowAttributes::default()
-            .with_title("GameTank!")
+            .with_title("GameTank: The Emulator! 🦀")
             .with_inner_size(LogicalSize::new(WIDTH*2, HEIGHT*2))
             .with_min_inner_size(LogicalSize::new(WIDTH, HEIGHT));
 

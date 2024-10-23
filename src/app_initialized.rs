@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use egui::{epaint, Color32};
+use egui::{epaint, Color32, Pos2, Rect, Vec2};
 use egui_wgpu::ScreenDescriptor;
 use tracing::warn;
 use winit::application::ApplicationHandler;
@@ -10,7 +10,7 @@ use crate::app_ui::gametankboy::GameTankBoyUI;
 use crate::app_uninit::App;
 use crate::emulator::color_map::COLOR_MAP;
 use crate::egui_renderer::EguiRenderer;
-use crate::emulator::Emulator;
+use crate::emulator::emulator::Emulator;
 use crate::graphics::GraphicsContext;
 
 pub struct AppInitialized {
@@ -19,6 +19,9 @@ pub struct AppInitialized {
     pub window: Arc<Window>,
     pub egui_renderer: EguiRenderer,
     pub console_gui: GameTankBoyUI,
+    show_left_pane: bool,
+    show_right_pane: bool,
+    show_bottom_pane: bool,
 }
 
 impl From<&mut App> for AppInitialized {
@@ -35,6 +38,9 @@ impl From<&mut App> for AppInitialized {
             window,
             egui_renderer,
             console_gui,
+            show_left_pane: true,
+            show_right_pane: true,
+            show_bottom_pane: true,
         }
     }
 }
@@ -46,7 +52,7 @@ impl AppInitialized {
 
         // Convert framebuffer to ColorImage
         let color_image = Self::framebuffer_to_color_image(&framebuffer);
-        // self.console_gui.update_screen(self.egui_renderer.context(), color_image);
+        self.console_gui.update_screen(color_image);
 
 
         let screen_descriptor = ScreenDescriptor {
@@ -77,14 +83,72 @@ impl AppInitialized {
         };
 
         egui::CentralPanel::default().frame(frame).show(self.egui_renderer.context(), |ui| {
-            let panel_rect = ui.available_rect_before_wrap();
-            ui.painter().rect_filled(panel_rect, 0.0, Color32::from_rgb(227, 120, 30));
+            // Set the minimum size for the center pane
+            let center_min_size = egui::vec2(128.0, 256.0);
+
             ui.vertical(|ui| {
-                ui.horizontal_centered(|ui| {
-                    self.console_gui.draw(ui);
+                // Horizontal layout for three columns
+                ui.horizontal(|ui| {
+                    // screen width
+                    let available_width = ui.available_width();
+                    let mut center_width = 128.0;
+                    let mut left_min_width = 256.0;
+                    let mut right_min_width = 256.0;
+
+                    let show_right = self.show_right_pane && available_width > center_width + right_min_width + ((self.show_left_pane) as usize as f32 * left_min_width);
+                    let show_left = self.show_left_pane && available_width > center_width + left_min_width + ((show_right && self.show_right_pane) as usize as f32 * right_min_width);
+
+                    if !show_left {
+                        left_min_width = 0.0;
+                    }
+                    if !show_right {
+                        right_min_width = 0.0;
+                    }
+
+                    if available_width > center_width + left_min_width + right_min_width {
+                        center_width = available_width - left_min_width - right_min_width;
+                    }
+
+
+                    // // Determine the width of the center pane based on the available width
+                    // let center_width = available_width.min(available_width - (self.show_left_pane as usize * 128) as f32 - (self.show_right_pane as usize * 128) as f32);
+
+                    // Optional left pane (only render if there's enough space)
+                    if show_left {
+                        let height = ui.available_height();
+                        ui.group(|ui| {
+                            ui.set_width_range(left_min_width ..= 512.0);
+                            ui.set_height(height);
+                            ui.label("Left Pane");
+                            // Add your left pane content here
+                        });
+                    }
+
+                    ui.horizontal_centered(|ui| {
+                        ui.set_height(ui.available_height());
+                        let max_width = if center_width > 512.0 { 512.0 } else { center_width };
+                        ui.set_width_range(center_min_size.x ..= max_width);
+                        self.console_gui.draw(ui);
+                    });
+
+                    // Optional right pane (only render if there's enough space)
+                    if show_right {
+                        ui.group(|ui| {
+                            ui.set_min_size(egui::vec2(128.0, ui.available_height())); // Fixed width for right pane
+                            // ui.set_height(ui.available_height());
+                            ui.label("Right Pane");
+                        });
+                    }
                 });
-                ui.add(egui::widgets::Separator::default());
-                ui.add(egui::widgets::Label::new("Bottom Half"));
+
+                // Optional bottom pane
+                // if self.show_bottom_pane {
+                //     ui.add(egui::widgets::Separator::default());
+                //     ui.horizontal(|ui| {
+                //         ui.label("Bottom Pane");
+                //         // Add your bottom pane content here
+                //     });
+                // }
             });
         });
 

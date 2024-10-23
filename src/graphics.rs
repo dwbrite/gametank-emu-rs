@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use winit::window::Window;
 use wgpu::{Features, Limits, MemoryHints};
-use crate::emulator::{HEIGHT, WIDTH};
+use crate::emulator::emulator::{HEIGHT, WIDTH};
 
 pub struct GraphicsContext {
     pub _instance: wgpu::Instance,

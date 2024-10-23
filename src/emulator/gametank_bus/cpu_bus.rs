@@ -20,7 +20,7 @@ const _BADAPPLE_GTR: &[u8] = include_bytes!("../roms/badapple.gtr");
 const _CUBICLE_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
 const _GAME_GTR: &[u8] = include_bytes!("../roms/game.gtr");
 
-const CURRENT_GAME: &[u8] = _GAME_GTR;
+const CURRENT_GAME: &[u8] = _BADAPPLE_GTR;
 
 #[derive(Debug)]
 pub struct CpuBus {
