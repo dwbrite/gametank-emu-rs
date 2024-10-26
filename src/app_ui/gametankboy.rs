@@ -1,19 +1,27 @@
-use egui::{vec2, Button, Color32, ColorImage, Context, Frame, ImageOptions, Rounding, Shadow, Style, TextureHandle, TextureOptions, Ui, Vec2, Widget};
-use image::GenericImageView;
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Cursor, Read, Seek};
+use egui::{include_image, vec2, Button, Color32, ColorImage, Context, Frame, ImageOptions, ImageSource, Rect, Rounding, Shadow, SizeHint, Style, TextureHandle, TextureOptions, Ui, Vec2, Widget};
+use egui::load::{SizedTexture, TextureLoadResult, TexturePoll};
+use image::{GenericImageView, ImageFormat};
 use tracing::warn;
 use crate::egui_renderer::EguiRenderer;
+use crate::emulator::emulator::Emulator;
 use crate::graphics::GraphicsContext;
+use crate::PlayState;
 
 const MIN_GAME_SIZE: f32 = 128.0;
 
 fn calculate_game_size(width: f32, height: f32, min_size: f32) -> f32 {
-    let min_dimension = 128.0;
+    let min_dimension = width.min(height);
     (min_dimension / min_size).floor() * min_size
 }
 
 
 pub struct GameTankBoyUI {
+    desired_scale: Option<u8>,
     screen: Box<TextureHandle>,
+    textures: HashMap<String, TextureHandle>,
+
     // a: [TextureHandle; 2],
     // b: [TextureHandle; 2],
     // c: [TextureHandle; 2],
@@ -22,7 +30,7 @@ pub struct GameTankBoyUI {
     // down: TextureHandle,
     // left: TextureHandle,
     // right: TextureHandle,
-    power: [TextureHandle; 2],
+    // power: [TextureHandle; 2],
     // reset: [TextureHandle; 2],
 }
 
@@ -41,19 +49,49 @@ fn load_png_to_image(path: &str) -> ColorImage {
     ColorImage::from_rgba_unmultiplied(size, pixels)
 }
 
+fn load_png_bytes_to_image<R: BufRead + Seek>(bytes: R) -> ColorImage {
+    let img = image::load(bytes, ImageFormat::Png).expect("failed to load image from bytes");
+
+    let rgb_image = img.to_rgba8();
+
+    // Get the dimensions of the image
+    let dimensions = img.dimensions();
+    let size = [dimensions.0 as usize, dimensions.1 as usize];
+
+    // Convert the image to egui::ColorImage
+    let pixels = rgb_image.as_raw();
+
+    ColorImage::from_rgba_unmultiplied(size, pixels)
+}
+
+fn load_included_image(context: &Context, img: ImageSource) -> SizedTexture {
+    match img.load(context, TextureOptions::NEAREST, SizeHint::Size(48, 48)).unwrap() {
+        TexturePoll::Pending { .. } => {
+            panic!("USE THIS PROPERLY.")
+        }
+        TexturePoll::Ready { texture } => {
+            texture
+        }
+    }
+}
+
 impl GameTankBoyUI {
     pub fn init(context: &Context, color_image: ColorImage) -> Self {
         let options = TextureOptions::NEAREST;
 
         let game_texture = context.load_texture("game_texture", color_image, TextureOptions::NEAREST);
 
-        // TODO: can't load from file on web, include_bytes!()
-        let power1 = context.load_texture("power_released", load_png_to_image("src/assets/POWER1.png"), options);
-        let power2 = context.load_texture("power_pressed", load_png_to_image("src/assets/POWER2.png"), options);
+        let mut textures = HashMap::new();
+
+        let power1 = context.load_texture("power_released", load_png_bytes_to_image(Cursor::new(include_bytes!("../assets/POWER1.png"))), options);
+        let power2 = context.load_texture("power_released", load_png_bytes_to_image(Cursor::new(include_bytes!("../assets/POWER2.png"))), options);
+        textures.insert("power_released".into(), power1);
+        textures.insert("power_pressed".into(), power2);
 
         Self {
-            power: [power1, power2],
+            desired_scale: Some(3),
             screen: Box::new(game_texture),
+            textures
         }
     }
 
@@ -61,14 +99,27 @@ impl GameTankBoyUI {
         self.screen.set_partial([0, 0], color_image, TextureOptions::NEAREST);
     }
 
-    pub fn draw(&mut self, ui: &mut Ui) {
+    pub fn draw(&mut self, ui: &mut Ui, emulator: &mut Emulator) {
+        // Convert framebuffer to ColorImage
+        let color_image = {
+            let framebuffer = emulator.cpu_bus.read_full_framebuffer();
+            crate::app_initialized::AppInitialized::buffer_to_color_image(&framebuffer)
+        };
+        self.update_screen(color_image);
+
         let available_width = ui.available_width();
         let available_height = ui.available_height();
+        let mut game_size = calculate_game_size(available_width, available_height, MIN_GAME_SIZE);
+        let orig_scale = game_size / MIN_GAME_SIZE;
 
-        let game_size = calculate_game_size(available_width, available_height, MIN_GAME_SIZE);
-        let mut game_rect = egui::Rect::from_min_size([128.0, 128.0].into(), [game_size, game_size].into());
+        // scale override, assuming there's enough space
+        if let Some(scale) = self.desired_scale {
+            if scale as f32 <= orig_scale {
+                game_size = MIN_GAME_SIZE * scale as f32
+            }
+        }
 
-        let sized_texture = egui::load::SizedTexture::new(self.screen.id(), game_rect.size());
+        let sized_texture = egui::load::SizedTexture::new(self.screen.id(), vec2(game_size, game_size));
 
         let c = Color32::from_rgb(227, 190, 69);
         let frame = Frame {
@@ -84,16 +135,16 @@ impl GameTankBoyUI {
                 let available_width = ui.available_width();
                 // let available_height = ui.available_height();
 
-                let margin_x = game_rect.width() * 0.2;
-                let mut margin_y = game_rect.height() * 0.05;
+                let margin_x = game_size * 0.2;
+                let mut margin_y = game_size * 0.05;
 
-                // if available_height < game_rect.height() + margin_y * 2.0 {
-                //     margin_y = (available_height - game_rect.height()) / 2.0;
-                // }
+                if available_height < game_size + margin_y * 2.0 {
+                    margin_y = (available_height - game_size) / 2.0;
+                }
 
                 ui.set_width(available_width);
-                ui.set_height(512.0);
-                game_rect.extend_with_x(64.0);
+                ui.set_height(available_height);
+                // game_rect.extend_with_x(64.0);
 
                 // this is the screen:
                 let frame_color = Color32::from_gray(8); // Light gray color for the frame
@@ -102,7 +153,8 @@ impl GameTankBoyUI {
                     rounding: Rounding::same(margin_y),
                     fill: frame_color,
                     outer_margin: vec2(0.0, 0.0).into(),
-                    shadow: Shadow {
+                    shadow:
+                    Shadow {
                         offset: vec2(0.0, 0.0),
                         blur: 2.0,
                         spread: 0.5,
@@ -113,18 +165,26 @@ impl GameTankBoyUI {
 
                 game_frame.show(ui, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.set_width(game_rect.width());
-                        ui.set_height_range(0.0 ..= game_rect.height());
+                        ui.set_width(game_size);
+                        ui.set_height_range(0.0 ..= game_size);
                         ui.add(egui::Image::new(sized_texture));
                     })
                 });
-                // ui.add(egui::Image::new(sized_texture));
 
-                let btn_sized_texture = egui::load::SizedTexture::new(self.power[0].id(), Vec2::new(48.0, 48.0));
+                let power = match emulator.play_state {
+                    PlayState::WasmInit => { self.textures.get("power_released").unwrap().clone() }
+                    PlayState::Paused => { self.textures.get("power_released").unwrap().clone() }
+                    PlayState::Playing => { self.textures.get("power_pressed").unwrap().clone() }
+                };
+                let btn_sized_texture = egui::load::SizedTexture::new(power.id(), Vec2::new(48.0, 48.0));
                 let button = Button::image(egui::Image::new(btn_sized_texture)).frame(false);
 
                 if button.ui(ui).clicked() {
-                    self.power.swap(0, 1);
+                    match emulator.play_state {
+                        PlayState::WasmInit => { emulator.play_state = PlayState::Playing; }
+                        PlayState::Paused => { emulator.play_state = PlayState::Playing; }
+                        PlayState::Playing => { emulator.play_state = PlayState::Paused; }
+                    }
                 }
             });
         });

@@ -112,8 +112,31 @@ impl SystemControl {
         }
     }
 
+    pub fn peek_byte(&self, address: u16) -> u8 {
+        match address {
+            0x2008 => {
+                self.peek_gamepad_byte(true)
+            }
+            0x2009 => {
+                self.peek_gamepad_byte(false)
+            }
+            _ => {
+                0
+            }
+        }
+    }
+
     pub fn read_gamepad_byte(&mut self, port_1: bool) -> u8 {
-        let gamepad = &mut self.gamepads[(!port_1) as usize];
+        let byte = self.peek_gamepad_byte(port_1);
+
+        self.gamepads[port_1 as usize].port_select = false;
+        self.gamepads[(!port_1) as usize].port_select = !self.gamepads[(!port_1) as usize].port_select;
+
+        byte
+    }
+
+    pub fn peek_gamepad_byte(&self, port_1: bool) -> u8 {
+        let gamepad = &self.gamepads[(!port_1) as usize];
         let mut byte = 255;
         if !gamepad.port_select {
             byte &= !((gamepad.start as u8) << 5);
@@ -126,10 +149,6 @@ impl SystemControl {
             byte &= !((gamepad.left as u8) << 1);
             byte &= !((gamepad.right as u8) << 0);
         }
-
-        self.gamepads[port_1 as usize].port_select = false;
-        self.gamepads[(!port_1) as usize].port_select = !self.gamepads[(!port_1) as usize].port_select;
-
         byte
     }
 }

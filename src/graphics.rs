@@ -45,8 +45,8 @@ impl GraphicsContext {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: *swapchain_format,
-            width: WIDTH*2,
-            height: HEIGHT*2,
+            width: window.inner_size().width.max(128),
+            height: window.inner_size().height.max(128),
             present_mode: wgpu::PresentMode::AutoVsync,
             desired_maximum_frame_latency: 0,
             alpha_mode: swapchain_capabilities.alpha_modes[0],

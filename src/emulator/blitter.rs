@@ -134,8 +134,8 @@ impl Blitter {
 
             let mut src_y_mod = self.src_y;
 
-            let mut blit_src_x = 0;
-            let mut blit_src_y = 0;
+            let mut blit_src_x;
+            let mut blit_src_y;
 
             if self.flip_x {
                 src_x_mod = !src_x_mod;

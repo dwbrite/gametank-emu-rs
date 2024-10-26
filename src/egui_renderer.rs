@@ -10,7 +10,6 @@ pub struct EguiRenderer {
     state: State,
     renderer: Renderer,
     frame_started: bool,
-    // emu_gui: GameTankBoyUI,
 }
 
 impl EguiRenderer {

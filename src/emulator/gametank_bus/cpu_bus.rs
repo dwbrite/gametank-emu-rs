@@ -9,6 +9,7 @@ use crate::emulator::gametank_bus::Bus;
 use crate::emulator::gametank_bus::reg_system_control::*;
 use crate::emulator::gamepad::GamePad;
 use crate::emulator::gametank_bus::ARAM;
+use crate::emulator::gametank_bus::cpu_bus::ByteDecorator::{AudioRam, CpuStack, SystemRam, Unreadable, Vram, ZeroPage};
 use crate::emulator::gametank_bus::reg_blitter::BlitterRegisters;
 use crate::emulator::gametank_bus::reg_etc::{new_framebuffer, BankingRegister, BlitterFlags, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer};
 use crate::emulator::gametank_bus::reg_system_control::*;
@@ -20,7 +21,24 @@ const _BADAPPLE_GTR: &[u8] = include_bytes!("../roms/badapple.gtr");
 const _CUBICLE_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
 const _GAME_GTR: &[u8] = include_bytes!("../roms/game.gtr");
 
-const CURRENT_GAME: &[u8] = _BADAPPLE_GTR;
+const _GAME1_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
+
+const CURRENT_GAME: &[u8] = _GAME1_GTR;
+
+#[derive(Copy, Clone, Debug)]
+pub enum ByteDecorator {
+    ZeroPage(u8),
+    CpuStack(u8),
+    SystemRam(u8),
+    // SCR(u8),
+    // VersatileInterfaceAdapter(u8),
+    AudioRam(u8),
+    Vram(u8),
+    Framebuffer(u8),
+    // Blitter(u8),
+    Aram(u8),
+    Unreadable(u8),
+}
 
 #[derive(Debug)]
 pub struct CpuBus {
@@ -31,10 +49,14 @@ pub struct CpuBus {
 
     pub system_control: SystemControl,
     pub blitter: BlitterRegisters,
+
     // heap allocations to prevent stackoverflow, esp on web
     pub ram_banks: Box<[[u8; 0x2000 - 0x200]; 4]>,
     pub framebuffers: [SharedFrameBuffer; 2],
     pub vram_banks: Box<[[u8; 256*256]; 8]>,
+
+    pub vram_quad_written: [bool; 32],
+
     pub aram: Option<ARAM>,
     pub cartridge: CartridgeType,
 }
@@ -70,7 +92,8 @@ impl Default for CpuBus {
             framebuffers: [new_framebuffer(0x00), new_framebuffer(0xFF)],
             vram_banks: Box::new([[0; 256*256]; 8]),
             cartridge: CartridgeType::from_slice(CURRENT_GAME),
-            aram: Some(Box::new([0; 0x1000]))
+            aram: Some(Box::new([0; 0x1000])),
+            vram_quad_written: [false; 32],
         };
 
         for p in bus.framebuffers[0].borrow_mut().iter_mut() {
@@ -88,7 +111,7 @@ impl Default for CpuBus {
 impl CpuBus {
     pub fn read_full_framebuffer(&self) -> Ref<'_, FrameBuffer> {
         let fb = self.system_control.get_framebuffer_out();
-        return self.framebuffers[fb].borrow();
+        self.framebuffers[fb].borrow()
     }
 
     fn update_flash_shift_register(&mut self, next_val: u8) {
@@ -171,6 +194,7 @@ impl CpuBus {
                         let vram_page = self.system_control.banking_register.vram_page() as usize;
                         let quadrant = self.blitter.vram_quadrant();
                         self.vram_banks[vram_page][address as usize - 0x4000 + quadrant*(128*128)] = data;
+                        self.vram_quad_written[quadrant + vram_page * 4] = true;
                     }
                     GraphicsMemoryMap::BlitterRegisters => {
                         self.blitter.write_byte(address, data);
@@ -247,6 +271,34 @@ impl CpuBus {
         }
 
         0
+    }
+
+    pub fn peek_byte_decorated(&self, address: u16) -> ByteDecorator {
+        match address {
+            0x0000..=0x00FF => { ZeroPage(self.zero_page[address as usize]) },
+            0x0100..=0x01FF => { CpuStack(self.cpu_stack[address as usize - 0x100]) },
+            0x0200..=0x1FFF => { SystemRam(self.ram_banks[self.system_control.get_ram_bank()][address as usize - 0x200]) },
+            0x2000..=0x2009 => { Unreadable(self.system_control.peek_byte(address)) },
+            // 0x2800..=0x280F => { Via(self.system_control.via_regs[(address & 0xF) as usize]) },
+            0x3000..=0x3FFF => { AudioRam(if let Some(aram) = &self.aram { aram[(address - 0x3000) as usize] } else { 0 }) },
+            0x4000..=0x7FFF => {
+                match self.system_control.get_graphics_memory_map() {
+                    GraphicsMemoryMap::FrameBuffer => {
+                        let fb = self.system_control.banking_register.framebuffer() as usize;
+                        ByteDecorator::Framebuffer(self.framebuffers[fb].borrow()[address as usize - 0x4000])
+                    }
+                    GraphicsMemoryMap::VRAM => {
+                        let vram_page = self.system_control.banking_register.vram_page() as usize;
+                        let quadrant = self.blitter.vram_quadrant();
+                        Vram(self.vram_banks[vram_page][address as usize - 0x4000 + quadrant*(128*128)])
+                    }
+                    GraphicsMemoryMap::BlitterRegisters => {
+                        Unreadable(0)
+                    }
+                }
+            },
+            _ => Unreadable(0),
+        }
     }
 
     pub fn vblank_nmi_enabled(&self) -> bool {

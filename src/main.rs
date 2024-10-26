@@ -1,14 +1,14 @@
-#![feature(exclusive_range_pattern)]
-#![feature(inline_const)]
 #![feature(core_intrinsics)]
 #![allow(clippy::disallowed_methods, clippy::single_match)]
+#![allow(dead_code, unused_variables, unused_imports, internal_features)]
+
 mod helpers;
 mod input;
 mod app_uninit;
 mod egui_renderer;
 mod graphics;
 mod app_ui;
-mod app_initialized;
+pub mod app_initialized;
 mod app_delegation;
 
 mod emulator;
@@ -36,7 +36,7 @@ use crate::PlayState::*;
 
 //
 #[derive(Copy, Clone, Debug, PartialEq)]
-enum PlayState {
+pub enum PlayState {
     WasmInit,
     Paused,
     Playing,
@@ -103,7 +103,8 @@ pub fn main() {
         event_loop.set_control_flow(ControlFlow::Poll);
 
         use thread_priority::*;
-        set_current_thread_priority(ThreadPriority::Max); // if it didn't work, oh well
+        // if it didn't work, oh well
+        let _ = set_current_thread_priority(ThreadPriority::Max);
 
         let mut app = Uninitialized(App::new());
         // TODO: app.emulator.as_mut().unwrap().play_state = Playing;

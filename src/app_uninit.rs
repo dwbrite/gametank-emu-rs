@@ -57,7 +57,7 @@ impl App {
         #[allow(unused_mut)]
         let mut window_attributes = WindowAttributes::default()
             .with_title("GameTank: The Emulator! 🦀")
-            .with_inner_size(LogicalSize::new(WIDTH*2, HEIGHT*2))
+            .with_inner_size(LogicalSize::new(1280, 720))
             .with_min_inner_size(LogicalSize::new(WIDTH, HEIGHT));
 
         #[cfg(target_arch = "wasm32")] {
@@ -114,7 +114,6 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
-        // let egui_renderer process the event first
         if self.gc.is_none() {
             self.try_graphics_context();
         }
