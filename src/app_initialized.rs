@@ -200,7 +200,7 @@ impl ApplicationHandler for AppInitialized {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
-        self.emulator.process_cycles(false);
+        self.emulator.process_cycles_over_time();
         self.egui_renderer.handle_input(&self.window, &event);
 
         match event {
@@ -227,7 +227,6 @@ impl ApplicationHandler for AppInitialized {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        self.emulator.process_cycles(false);
-        // self.window.request_redraw();
+        self.emulator.process_cycles_over_time();
     }
 }

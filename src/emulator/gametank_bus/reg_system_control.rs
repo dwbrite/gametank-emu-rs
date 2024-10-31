@@ -89,7 +89,10 @@ impl SystemControl {
                 self.banking_register.0 = data
             }
             0x2006 => { self.audio_enable_sample_rate = data }
-            0x2007 => { self.dma_flags.0 = data }
+            0x2007 => {
+                self.dma_flags.0 = data;
+                // warn!("setting dma_flags to {:08b}", data);
+            }
             _ => {
                 warn!("Attempted to write read-only memory at: ${:02X}", address);
             }

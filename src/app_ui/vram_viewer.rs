@@ -120,6 +120,12 @@ impl VRAMViewer {
                     self.selected_page = page;
                 }
             }
+
+            let q1 = SizedTexture::new(self.framebuffers[0].id(), vec2(128.0, 128.0));
+            let q2 = SizedTexture::new(self.framebuffers[1].id(), vec2(128.0, 128.0));
+
+            ui.image(q1);
+            ui.image(q2);
         });
     }
 }

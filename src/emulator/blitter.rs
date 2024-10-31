@@ -1,193 +1,286 @@
+use std::cmp::PartialEq;
 use std::intrinsics::{add_with_overflow, wrapping_add};
+use std::ops::{Not, BitAnd};
 use std::time::Instant;
+use futures::AsyncReadExt;
 use tracing::{debug, info, warn};
+use crate::emulator::blitter::Signal::{High, Low};
 use crate::emulator::gametank_bus::{CpuBus};
+
+#[derive(Debug, Copy, Clone)]
+pub struct FlipFlop {
+    last_clock: Signal,
+    last_data: Signal,
+}
+
+impl FlipFlop {
+    pub fn cycle(&mut self, preset: Signal, data: Signal, clock: Signal, clear: Signal) -> Signal {
+        if clear == Low {
+            self.last_data = Low;
+        } else if preset == Low {
+            self.last_data = High;
+        } else if clock == High && self.last_clock == Low {
+            self.last_data = data;
+        }
+        self.last_clock = clock;
+        self.last_data
+    }
+
+    pub fn val(&self) -> Signal {
+        self.last_data
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum Signal {
+    Low,
+    High,
+}
+
+impl Signal {
+    pub fn nand(self, other: Self) -> Self {
+        match (self, other) {
+            (High, High) => Low,
+            _ => High
+        }
+    }
+
+    pub fn and(self, other: Self) -> Self {
+        match (self, other) {
+            (High, High) => High,
+            _ => Low
+        }
+    }
+}
+
+impl From<bool> for Signal {
+    fn from(value: bool) -> Self {
+        if value {
+            High
+        } else {
+            Low
+        }
+    }
+}
+
+impl Not for Signal {
+    type Output = Signal;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Low => High,
+            High => Low
+        }
+    }
+}
+
+/// this is _more or less_ a 74hc40103
+#[derive(Debug)]
+pub struct Counter {
+    pub counter: u8,
+    pub last_clock: Signal,
+}
+
+impl Counter {
+    pub fn cycle(&mut self, clock_pulse: Signal, parallel_load: Signal, terminal_enable: Signal, parallel_enable: Signal, data: u8) -> Signal {
+        let mut output = High;
+
+        if parallel_load == Low {
+            self.counter = data;
+        } else if self.last_clock == Low && clock_pulse == High {
+            if parallel_enable == Low {
+                self.counter = data;
+            } else if terminal_enable == Low && self.counter > 0 {
+                self.counter -= 1;
+            }
+        }
+
+        if terminal_enable == Low && self.counter == 0 {
+            output = Low;
+        }
+
+        self.last_clock = clock_pulse;
+        output
+    }
+}
+
+#[derive(Debug)]
+pub struct CountUp {
+    pub counter: u8,
+    pub last_clock: Signal,
+}
+
+impl CountUp {
+    pub fn cycle(&mut self, _load: Signal, enp: Signal, ent: Signal, clk: Signal, load_val: u8) -> u8 {
+        if _load == Low {
+            self.counter = load_val;
+        } else if enp == High && ent == High && clk == High && self.last_clock == Low {
+            self.counter = self.counter.wrapping_add(1);
+        }
+
+        self.last_clock = clk;
+        self.counter
+    }
+}
 
 #[derive(Debug)]
 pub struct Blitter {
-    // start_time: Instant,
+    pub counter_x: Counter,
+    pub counter_y: Counter,
 
-    src_y: u8,
-    dst_y: u8,
-    height: u8,
-    flip_y: bool,
+    pub inita: FlipFlop,
+    pub initb: FlipFlop,
+    pub running: FlipFlop,
+    pub irq: FlipFlop,
 
-    src_x: u8,
-    dst_x: u8,
-    width: u8,
-    flip_x: bool,
+    // pub running: Signal,
+    pub _row_complete: Signal,
+    pub _copy_done: Signal,
+    pub _irq_out: Signal,
+    pub irq_triggered: bool,
 
-    offset_x: u8,
-    offset_y: u8,
-
-    color_fill: bool,
-
-    color: u8,
-    blitting: bool,
-    cycles: i32,
-    pub irq_trigger: bool,
+    pub src_x: CountUp,
+    pub src_y: CountUp,
+    pub dst_x: CountUp,
+    pub dst_y: CountUp,
 }
 
 impl Blitter {
     pub fn default() -> Self {
         Self {
-            src_y: 0,
-            dst_y: 0,
-            height: 0,
-            flip_y: false,
-            src_x: 0,
-            dst_x: 0,
-            width: 0,
-            flip_x: false,
-            offset_x: 0,
-            offset_y: 0,
-            color_fill: false,
-            color: 0,
-            blitting: false,
-            cycles: 0,
-            irq_trigger: false,
+            counter_x: Counter { counter: 28, last_clock: Low },
+            counter_y: Counter { counter: 122, last_clock: Low },
+
+            inita: FlipFlop { last_clock: High, last_data: Low },
+            initb: FlipFlop { last_clock: High, last_data: Low },
+            running: FlipFlop { last_clock: High, last_data: Low },
+            _row_complete: High,
+            _copy_done: High,
+            irq: FlipFlop { last_clock: High, last_data: Low },
+            _irq_out: High,
+            irq_triggered: false,
+            src_x: CountUp { counter: 0, last_clock: Signal::Low },
+            src_y: CountUp { counter: 0, last_clock: Signal::Low },
+            dst_x: CountUp { counter: 0, last_clock: Signal::Low },
+            dst_y: CountUp { counter: 0, last_clock: Signal::Low },
         }
     }
 
-    pub fn clear_irq_trigger(&mut self) -> bool {
-        let result = self.irq_trigger;
-        self.irq_trigger = false;
-        result
+    pub fn irq_trigger(&mut self) -> bool {
+        let r = self.irq_triggered;
+        self.irq_triggered = false;
+        r
     }
 
     pub fn cycle(&mut self, bus: &mut CpuBus) {
-        debug!(target: "blitter", "{:?}", self);
-        // 
-        // if self.blitting && bus.blitter.start == 1 {
-        //     // warn!("start on blitter after processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
-        //     // bus.blitter.start = 0;
-        // }
+        let b = &mut bus.blitter;
+        let flip_x = b.width & 0b1000_0000 != 0;
+        let flip_y = b.height & 0b1000_0000 != 0;
 
-        // load y at blitter start
-        if !self.blitting && bus.blitter.start != 0 {
-            // self.start_time = Instant::now();
-            // bus.blitter.start = 0;
-            self.irq_trigger = false;
-            self.src_y = bus.blitter.gy;
-            self.dst_y = bus.blitter.vy;
-            self.height = bus.blitter.height & 0b01111111;
-            self.flip_y = bus.blitter.height & 0b10000000 != 0;
-            self.color = !bus.blitter.color;
-            self.color_fill = bus.system_control.dma_flags.dma_colorfill_enable();
-            self.blitting = true;
-            self.cycles = 0;
+        // if DMA_enable (blitter settings on) && blitter.start was written to
+        let (bit_start, start_addressed) = b.start.read_once();
+        let _start = !Signal::from(bus.system_control.dma_flags.dma_enable() && bit_start);
 
+        for phase in 0..4 {
+            let p0 = Signal::from(phase == 0);
+            let p1 = Signal::from(phase == 1);
+            let p2 = Signal::from(phase == 2);
+            let p3 = Signal::from(phase == 3);
 
-            debug!(target: "blitter", "starting blit from ({}, {}):({}, {}) page {} at ({}, {}); color mode {}, gcarry {}",
-                bus.blitter.gx, bus.blitter.gy,
-                bus.blitter.width, bus.blitter.height,
-                bus.system_control.banking_register.vram_page(),
-                bus.blitter.vx, bus.blitter.vy,
-                bus.system_control.dma_flags.dma_colorfill_enable(),
-                bus.system_control.dma_flags.dma_gcarry(),
-            );
-        }
+            let initb_data = self.inita.cycle(_start, Low, Low, !self.initb.val());
+            let running_pre = p2.nand(self.initb.val());
+            let _init = !self.initb.cycle(High, initb_data, p3, running_pre);
 
-        if !self.blitting {
-            return
-        }
+            let running = self.running.cycle(running_pre, Low, Low, self._copy_done);
+            let _running = !running;
 
-        self.src_x = bus.blitter.gx;
-        self.dst_x = bus.blitter.vx;
-        self.width = bus.blitter.width & 0b01111111;
-        self.flip_x = bus.blitter.width & 0b10000000 != 0;
+            let _xreload = _init.and(self._row_complete); // if not (init or row_complete)
 
-        if self.offset_x >= self.width {
-            self.offset_x = 0;
-            self.offset_y += 1;
-        }
+            let src_x = self.src_x.cycle(_xreload, running, _init, p1, b.gx) as usize;
+            let src_y = self.src_y.cycle(_init, running, !self._row_complete, p1, b.gy) as usize;
+            let dst_x = self.dst_x.cycle(_xreload, running, _init, p1, b.vx) as usize & 0b0111_1111;
+            let dst_y = self.dst_y.cycle(_init, running, !self._row_complete, p1, b.vy) as usize & 0b0111_1111;
 
-        if self.offset_y >= self.height {
-            self.offset_y = 0;
+            let x_pl = p2.nand(!self._row_complete);
+            let x_te = _running;
+            let pe = _init;
+            self._row_complete = self.counter_x.cycle(p0, x_pl, x_te, pe, b.width);
+            self._copy_done = self.counter_y.cycle(p1, High, self._row_complete, pe, b.height);
 
-            self.blitting = false;
-            bus.blitter.start = 0;
-            debug!("blit complete, copied {} pixels", self.cycles);
-            if bus.system_control.dma_flags.dma_irq() {
-                self.irq_trigger = true;
-            }
-            return
-        }
+            let _irq_clear = !Signal::from(start_addressed);
+            let try_irq = self.irq.cycle(self._copy_done, Low, Low, _irq_clear);
+            self._irq_out = try_irq.nand(Signal::from(bus.system_control.dma_flags.dma_irq()));
 
-
-        self.cycles += 1;
-
-        // if blitter is disabled, counters continue but no write occurs
-        if !bus.system_control.dma_flags.dma_enable() {
-            debug!(target: "blitter", "blit cycle skipped; dma access disabled. dma flags: {:08b}", bus.system_control.dma_flags.0);
-            self.offset_x += 1;
-            return
-        }
-
-        // get the next color to write
-        let color = if self.color_fill {
-            self.color
-        } else {
-            let vram_page = bus.system_control.banking_register.vram_page() as usize;
-
-            let mut src_x_mod = self.src_x;
-
-            let mut src_y_mod = self.src_y;
-
-            let mut blit_src_x;
-            let mut blit_src_y;
-
-            if self.flip_x {
-                src_x_mod = !src_x_mod;
-                blit_src_x = src_x_mod.wrapping_sub(self.offset_x) as usize;
-            } else {
-                blit_src_x = (src_x_mod.wrapping_add(self.offset_x)) as usize;
+            // trigger IRQ even when it's cleared on a 1x1 blit
+            if self._irq_out == Low || _irq_clear == Low && start_addressed {
+                self.irq_triggered = true;
             }
 
-            if self.flip_y {
-                src_y_mod = !src_y_mod;
-                blit_src_y = (src_y_mod.wrapping_sub(self.offset_y)) as usize;
-            } else {
-                blit_src_y = (src_y_mod.wrapping_add(self.offset_y)) as usize;
-            }
+            if phase == 0 && running == High {
+                let src_offset = match (src_x >= 128, src_y >= 128) {
+                    (true, true) => 128 * 128 * 3,  // Bottom-right quadrant
+                    (true, false) => 128 * 128,     // Top-right quadrant
+                    (false, true) => 128 * 128 * 2, // Bottom-left quadrant
+                    _ => 0,                         // Top-left quadrant
+                };
 
-            // if gcarry is turned off, blits should tile 16x16
-            if !bus.system_control.dma_flags.dma_gcarry() {
-                blit_src_x = (src_x_mod + self.offset_x % 16) as usize;
-                blit_src_y = (src_y_mod + self.offset_y % 16) as usize;
-            }
-            debug!(target: "blitter", "starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
+                let local_x = src_x % 128;
+                let local_y = src_y % 128;
+                let src_address = src_offset + local_x + local_y * 128;
+                let dst_address = dst_x + dst_y * 128;
+                let src_bank = bus.system_control.banking_register.vram_page() as usize;
+                let dest_fb = bus.system_control.banking_register.framebuffer() as usize;
 
-            bus.vram_banks[vram_page][blit_src_x + blit_src_y*128]
-        };
 
-        let out_x = wrapping_add(self.dst_x, self.offset_x) as usize;
-        let out_y = (self.dst_y + self.offset_y) as usize;
-        let out_fb = bus.system_control.banking_register.framebuffer() as usize;
+                let color = if bus.system_control.dma_flags.dma_colorfill_enable() {
+                    !b.color
+                } else {
+                    bus.vram_banks[src_bank][src_address]
+                };
 
-        if out_x >= 128 || out_y >= 128 {
-            self.offset_x = self.offset_x.wrapping_add(1);
-            return
-        }
-
-        // write to active framebuffer, if not transparent
-        if bus.system_control.dma_flags.dma_opaque() || color != 0 {
-            bus.framebuffers[out_fb].borrow_mut()[out_x + out_y*128] = color;
-        }
-
-        // increment x offset
-        self.offset_x = self.offset_x.wrapping_add(1);
-    }
-
-    pub fn instant_blit(&mut self, bus: &mut CpuBus) {
-        // on blit start, blit until done
-        if !self.blitting && bus.blitter.start != 0 {
-            loop {
-                self.cycle(bus);
-                if !self.blitting {
-                    break;
+                if bus.system_control.dma_flags.dma_opaque() || color != 0 {
+                    bus.framebuffers[dest_fb].borrow_mut()[dst_address] = color;
                 }
             }
         }
+        // if self.copy_done == Low {
+        //     println!("copy done");
+        //     self.debug_counter = None;
+        // } else if let Some(c) = &mut self.debug_counter {
+        //     *c += 1;
+        // }
+        //
+        // let src_x = if flip_x {
+        //     // TODO: this
+        //     b.gx.wrapping_add(self.counter_x.counter) as usize
+        // } else {
+        //     b.gx.wrapping_add(self.counter_x.counter) as usize
+        // };
+        //
+        // let src_y = if flip_y {
+        //     // TODO: this
+        //     b.gy.wrapping_add(self.counter_y.counter) as usize
+        // } else {
+        //     b.gy.wrapping_add(self.counter_y.counter) as usize
+        // };
+        //
+        // let dst_x = b.vx.wrapping_add(self.counter_x.counter) as usize;
+        // let dst_y = b.vy.wrapping_add(self.counter_y.counter) as usize;
+        //
+        // println!("copying pixel: src: ({}, {}), dst: ({}, {})", src_x, src_y, dst_x, dst_y);
+        //
+        // let color = if bus.system_control.dma_flags.dma_colorfill_enable() {
+        //     !b.color
+        // } else {
+        //     let bank = bus.system_control.banking_register.vram_page() as usize;
+        //     bus.vram_banks[bank][src_x + src_y * 128]
+        // };
+        //
+        // if dst_x >= 128 || dst_y >= 128 {
+        //     return;
+        // }
+        //
+        // let fb_idx = (!bus.system_control.dma_flags.dma_page_out()) as usize;
+        // bus.framebuffers[fb_idx].get_mut()[dst_x + dst_y * 128] = b.color;
     }
 }

@@ -1,4 +1,4 @@
-use w65c02s::W65C02S;
+use w65c02s::{P_I, W65C02S};
 use std::collections::HashMap;
 use winit::keyboard::{Key, NamedKey, SmolStr};
 use tracing::{debug, error, warn};
@@ -124,9 +124,7 @@ impl Emulator {
         }
     }
 
-    pub fn process_cycles(&mut self, is_web: bool) {
-        self.process_inputs();
-
+    pub fn process_cycles_over_time(&mut self) {
         if self.play_state != Playing {
             return
         }
@@ -141,8 +139,27 @@ impl Emulator {
         }
 
         let elapsed_ns = elapsed_ms * 1000000.0;
-        let mut remaining_cycles: i32 = (elapsed_ns / self.cpu_ns_per_cycle) as i32;
+        let remaining_cycles: i32 = (elapsed_ns / self.cpu_ns_per_cycle) as i32;
 
+        self.process_cycles(remaining_cycles);
+
+        self.last_emu_tick = now_ms;
+
+        if now_ms - self.last_render_time >= 16.67 {
+            debug!("time since last render: {}", now_ms - self.last_render_time);
+            self.last_render_time = now_ms;
+        }
+    }
+
+    pub fn step(&mut self) {
+        self.process_cycles(1);
+    }
+
+    /// Not exactly cycle accurate, but it's close enough for stepping and for processing over time
+    pub fn process_cycles(&mut self, cycles: i32) {
+        self.process_inputs();
+
+        let mut remaining_cycles = cycles;
         let mut acp_cycle_accumulator = 0;
 
         while remaining_cycles > 0 {
@@ -153,6 +170,14 @@ impl Emulator {
                 // warn!("waited {} cycles", self.wait_counter);
                 self.wait_counter = 0;
             }
+
+            // let op = self.cpu_bus.read_byte(self.cpu.get_pc());
+            //
+            // if op == w65c02s::op::RTI {
+            //     println!("RTI");
+            // } else if op == w65c02s::op::WAI {
+            //     println!("WAI");
+            // }
 
             let _ = self.cpu.step(&mut self.cpu_bus);
             // clear interrupts after a step
@@ -175,20 +200,15 @@ impl Emulator {
             }
             // TODO: instant blit option
 
-            let blit_irq = self.blitter.irq_trigger;
+            let blit_irq = self.blitter.irq_trigger();
             self.cpu.set_irq(blit_irq);
+
 
             self.clock_cycles_to_vblank -= cpu_cycles;
             if self.clock_cycles_to_vblank <= 0 {
                 self.vblank();
+                // warn!("vblank!");
             }
-        }
-
-        self.last_emu_tick = now_ms;
-
-        if !is_web && (now_ms - self.last_render_time) >= 16.67 {
-            debug!("time since last render: {}", now_ms - self.last_render_time);
-            self.last_render_time = now_ms;
         }
     }
 
@@ -243,7 +263,6 @@ impl Emulator {
 
         if self.cpu_bus.vblank_nmi_enabled() {
             self.cpu.set_nmi(true);
-            // warn!("vblanked");
         }
     }
 
