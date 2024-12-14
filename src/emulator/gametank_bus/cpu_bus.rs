@@ -23,7 +23,7 @@ const _GAME_GTR: &[u8] = include_bytes!("../roms/game.gtr");
 
 const _GAME1_GTR: &[u8] = include_bytes!("../roms/torpedo.gtr");
 
-const CURRENT_GAME: &[u8] = _MICROVOID_GTR;
+const CURRENT_GAME: &[u8] = _GAME1_GTR;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ByteDecorator {

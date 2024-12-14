@@ -148,8 +148,8 @@ pub struct Blitter {
 impl Blitter {
     pub fn default() -> Self {
         Self {
-            counter_x: Counter { counter: 28, last_clock: Low },
-            counter_y: Counter { counter: 122, last_clock: Low },
+            counter_x: Counter { counter: 0, last_clock: Low },
+            counter_y: Counter { counter: 0, last_clock: Low },
 
             inita: FlipFlop { last_clock: High, last_data: Low },
             initb: FlipFlop { last_clock: High, last_data: Low },
@@ -170,6 +170,10 @@ impl Blitter {
         let r = self.irq_triggered;
         self.irq_triggered = false;
         r
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::default();
     }
 
     pub fn cycle(&mut self, bus: &mut CpuBus) {
@@ -243,44 +247,5 @@ impl Blitter {
                 }
             }
         }
-        // if self.copy_done == Low {
-        //     println!("copy done");
-        //     self.debug_counter = None;
-        // } else if let Some(c) = &mut self.debug_counter {
-        //     *c += 1;
-        // }
-        //
-        // let src_x = if flip_x {
-        //     // TODO: this
-        //     b.gx.wrapping_add(self.counter_x.counter) as usize
-        // } else {
-        //     b.gx.wrapping_add(self.counter_x.counter) as usize
-        // };
-        //
-        // let src_y = if flip_y {
-        //     // TODO: this
-        //     b.gy.wrapping_add(self.counter_y.counter) as usize
-        // } else {
-        //     b.gy.wrapping_add(self.counter_y.counter) as usize
-        // };
-        //
-        // let dst_x = b.vx.wrapping_add(self.counter_x.counter) as usize;
-        // let dst_y = b.vy.wrapping_add(self.counter_y.counter) as usize;
-        //
-        // println!("copying pixel: src: ({}, {}), dst: ({}, {})", src_x, src_y, dst_x, dst_y);
-        //
-        // let color = if bus.system_control.dma_flags.dma_colorfill_enable() {
-        //     !b.color
-        // } else {
-        //     let bank = bus.system_control.banking_register.vram_page() as usize;
-        //     bus.vram_banks[bank][src_x + src_y * 128]
-        // };
-        //
-        // if dst_x >= 128 || dst_y >= 128 {
-        //     return;
-        // }
-        //
-        // let fb_idx = (!bus.system_control.dma_flags.dma_page_out()) as usize;
-        // bus.framebuffers[fb_idx].get_mut()[dst_x + dst_y * 128] = b.color;
     }
 }
