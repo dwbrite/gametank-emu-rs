@@ -1,7 +1,9 @@
+use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
 use egui::{epaint, vec2, Align, Button, Color32, Frame, Id, LayerId, Layout, Pos2, Rect, ResizeDirection, Rounding, ScrollArea, TextureOptions, Ui, UiBuilder, Vec2, ViewportCommand};
 use egui_wgpu::ScreenDescriptor;
-use tracing::warn;
+use tracing::{error, warn};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{KeyEvent, WindowEvent};
@@ -222,6 +224,22 @@ impl ApplicationHandler for AppInitialized {
             },
             WindowEvent::MouseInput { .. } => { self.emulator.wasm_init(); }
             WindowEvent::Touch(_) => { self.emulator.wasm_init(); }
+            WindowEvent::DroppedFile(path) => {
+                warn!("reading file from path...");
+                // check if filename ends in .gtr and load file into slice
+                let filename = path.file_name().unwrap().to_str().unwrap();
+                if !filename.ends_with(".gtr") {
+                    error!("not a valid gtr");
+                    return
+                }
+
+                let mut file = File::open(&path).unwrap();
+                let mut bytes = Vec::new();
+                file.read_to_end(&mut bytes).unwrap();
+
+                self.emulator.load_rom(bytes.as_slice());
+                warn!("successfully loaded {}", filename);
+            }
             _ => (),
         }
     }

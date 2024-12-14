@@ -7,7 +7,7 @@ use winit::window::Window;
 use crate::app_ui::gametankboy::GameTankBoyUI;
 
 pub struct EguiRenderer {
-    state: State,
+    pub state: State,
     renderer: Renderer,
     frame_started: bool,
 }
