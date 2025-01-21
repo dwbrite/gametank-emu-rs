@@ -19,9 +19,9 @@ const _MICROVOID_GTR: &[u8] = include_bytes!("../roms/microvoid.gtr");
 const _TETRIS_GTR: &[u8] = include_bytes!("../roms/tetris.gtr");
 const _BADAPPLE_GTR: &[u8] = include_bytes!("../roms/badapple.gtr");
 const _CUBICLE_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
-const _GAME_GTR: &[u8] = include_bytes!("../roms/game.gtr");
+const _COLORS: &[u8] = include_bytes!("../roms/colortest.gtr");
 
-const _GAME1_GTR: &[u8] = include_bytes!("../roms/torpedo.gtr");
+const _GAME1_GTR: &[u8] = include_bytes!("../roms/multi.gtr");
 
 const CURRENT_GAME: &[u8] = _GAME1_GTR;
 

@@ -13,7 +13,7 @@ use crate::app_ui::gametankboy::GameTankBoyUI;
 use crate::app_ui::ram_inspector::MemoryInspector;
 use crate::app_ui::vram_viewer::{VRAMViewer, VRAMViewerLayout};
 use crate::app_uninit::App;
-use crate::emulator::color_map::COLOR_MAP;
+use crate::emulator::color_map::{COLOR_MAP, COLOR_MAP_PERCEPTUALLY_AUTOMAPPED, COLOR_MAP_WRONG};
 use crate::egui_renderer::EguiRenderer;
 use crate::emulator::emulator::{Emulator, HEIGHT, WIDTH};
 use crate::graphics::GraphicsContext;
@@ -178,7 +178,7 @@ impl AppInitialized {
         let mut pixels: Vec<u8> = Vec::with_capacity(128 * 128 * 4); // 4 channels per pixel (RGBA)
 
         for &index in framebuffer.iter() {
-            let (r, g, b, a) = COLOR_MAP[index as usize];
+            let (r, g, b, a) = COLOR_MAP[index.wrapping_sub(32) as usize];
             pixels.push(r);
             pixels.push(g);
             pixels.push(b);
