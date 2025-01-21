@@ -17,7 +17,7 @@ pub enum ControllerButton {
 #[derive(Eq, Hash, PartialEq)]
 pub enum InputCommand {
     Controller1(ControllerButton),
-    _Controller2(ControllerButton),
+    Controller2(ControllerButton),
     PlayPause,
     SoftReset,
     HardReset,

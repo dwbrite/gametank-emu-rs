@@ -16,7 +16,7 @@ use crate::emulator::gametank_bus::{AcpBus, Bus, CpuBus};
 use crate::helpers::get_now_ms;
 use crate::input::ControllerButton::{Down, Left, Right, Start, Up, A, B, C};
 use crate::input::{ControllerButton, InputCommand, KeyState};
-use crate::input::InputCommand::{Controller1, HardReset, PlayPause, SoftReset, _Controller2};
+use crate::input::InputCommand::{Controller1, Controller2, HardReset, PlayPause, SoftReset};
 use crate::input::KeyState::JustReleased;
 use crate::PlayState;
 use crate::PlayState::{Paused, Playing, WasmInit};
@@ -52,7 +52,7 @@ impl Emulator {
         self.cpu_bus.cartridge = CartridgeType::from_slice(bytes);
         self.cpu.reset();
         self.acp.reset();
-        self.blitter.reset();
+        self.blitter.clear_irq_trigger();
     }
 }
 
@@ -110,7 +110,14 @@ impl Emulator {
         input_bindings.insert(Key::Character(SmolStr::new("c")), InputCommand::Controller1(C));
 
         // controller 2
-        // TODO:
+        input_bindings.insert(Key::Named(NamedKey::Space), InputCommand::Controller2(Start));
+        input_bindings.insert(Key::Character(SmolStr::new("a")), InputCommand::Controller2(Left));
+        input_bindings.insert(Key::Character(SmolStr::new("d")), InputCommand::Controller2(Right));
+        input_bindings.insert(Key::Character(SmolStr::new("w")), InputCommand::Controller2(Up));
+        input_bindings.insert(Key::Character(SmolStr::new("s")), InputCommand::Controller2(Down));
+        input_bindings.insert(Key::Character(SmolStr::new("j")), InputCommand::Controller2(A));
+        input_bindings.insert(Key::Character(SmolStr::new("k")), InputCommand::Controller2(B));
+        input_bindings.insert(Key::Character(SmolStr::new("l")), InputCommand::Controller2(C));
 
         // emulator
         input_bindings.insert(Key::Character(SmolStr::new("r")), InputCommand::SoftReset);
@@ -281,7 +288,7 @@ impl Emulator {
         for key in &keys {
             match key {
                 Controller1(button) => { self.set_gamepad_input(0, key, button); }
-                _Controller2(button) => { self.set_gamepad_input(0, key, button); }
+                Controller2(button) => { self.set_gamepad_input(1, key, button); }
                 PlayPause => {
                     if self.input_state[key] == JustReleased {
                         match self.play_state {
