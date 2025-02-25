@@ -1,0 +1,60 @@
+name: Build and Release WASM
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "*"  # Runs on any tag
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Specific Rust Nightly
+        run: |
+          rustup install nightly-2024-10-18
+          rustup default nightly-2024-10-18
+          rustup target add wasm32-unknown-unknown
+
+      - name: Verify Rust Version
+        run: rustc --version && cargo --version
+
+      - name: Build WASM
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Package Artifact
+        run: |
+          mkdir dist
+          cp target/wasm32-unknown-unknown/release/*.wasm dist/
+          tar -czvf wasm-build.tar.gz -C dist .
+
+      - name: Upload to GitHub Releases
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wasm-build.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload "latest" release on master push
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wasm-build.tar.gz
+          tag_name: latest
+          release_name: "Latest Build"
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/master'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
