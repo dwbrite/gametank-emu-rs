@@ -34,7 +34,7 @@ jobs:
         run: cargo install just
 
       - name: Install wasm-bindgen
-        run: cargo install wasm-bindgen-cli --locked
+        run: cargo install -f wasm-bindgen-cli --version 0.2.95
 
       - name: Just Build WASM
         run: just build-wasm
