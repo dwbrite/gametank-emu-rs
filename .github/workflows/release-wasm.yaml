@@ -15,11 +15,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Specific Rust Nightly
-        run: |
-          rustup install nightly-2024-10-18
-          rustup default nightly-2024-10-18
-          rustup target add wasm32-unknown-unknown
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2024-10-18
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
 
       - name: Verify Rust Version
         run: rustc --version && cargo --version

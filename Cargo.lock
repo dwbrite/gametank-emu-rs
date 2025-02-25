@@ -1622,6 +1622,8 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 [[package]]
 name = "klingt"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3db2d06c20735f95bd6d1fb10a99c7b0c55bc8f70e276660584fd67ce07cfd32"
 dependencies = [
  "cpal",
  "dasp_graph",
