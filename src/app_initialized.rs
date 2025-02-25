@@ -1,9 +1,10 @@
+use std::cell::OnceCell;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 use egui::{epaint, vec2, Align, Button, Color32, Frame, Id, LayerId, Layout, Pos2, Rect, ResizeDirection, Rounding, ScrollArea, TextureOptions, Ui, UiBuilder, Vec2, ViewportCommand};
 use egui_wgpu::ScreenDescriptor;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{KeyEvent, WindowEvent};
@@ -90,65 +91,66 @@ impl AppInitialized {
             ..Default::default()
         };
 
-
-        egui::TopBottomPanel::bottom("bottom_pane_2").resizable(false).show_separator_line(true).show_animated(self.egui_renderer.context(), self.show_bottom_pane, |ui| {
-            ui.vertical(|ui| {
-
-                ui.vertical_centered(|ui| {
-                    ui.allocate_space(vec2(ui.available_width(), 0.0));
-                    self.vram_viewer.draw(ui, &mut self.emulator);
-                    ui.allocate_space(vec2(ui.available_width(), 0.0));
-                });
-            });
-        });
-
-        egui::TopBottomPanel::bottom("bottom_pane_1").resizable(false).show_separator_line(true).show(self.egui_renderer.context(), |ui| {
-            ui.horizontal(|ui| {
-                ui.toggle_value(&mut self.show_left_pane, "show left panel");
-                ui.toggle_value(&mut self.show_bottom_pane, "show bottom panel");
-                ui.toggle_value(&mut self.show_right_pane, "show right panel");
-            });
-        });
-
-        let mut left_size = 0.0;
-        let mut right_size = 0.0;
-
-        egui::SidePanel::left("left_pane").resizable(true).min_width(0.0).show_separator_line(true).frame(Frame {
-            inner_margin: vec2(0.0, 0.0).into(),
-            outer_margin: vec2(0.0, 0.0).into(),
-            fill: Color32::from_gray(24),
-            ..Default::default()
-        }).show_animated(self.egui_renderer.context(), self.show_left_pane, |ui| {
-            left_size = ui.available_width();
-
-            if self.show_left_pane {
-                self.mem_inspector.draw(ui, &mut self.emulator);
-            }
-        });
-
-        egui::SidePanel::right("right_pane").resizable(true).min_width(0.0).show_separator_line(true).frame(Frame {
-            inner_margin: vec2(0.0, 0.0).into(),
-            outer_margin: vec2(0.0, 0.0).into(),
-            fill: Color32::from_gray(24),
-            ..Default::default()
-        }).show_animated(self.egui_renderer.context(), self.show_right_pane, |ui| {
-            right_size = ui.available_width();
-
-            if self.show_right_pane {
-                let sa = ScrollArea::both().enable_scrolling(true).min_scrolled_width(0.0).show(ui, |ui| {
-                    ui.with_layout(Layout::top_down_justified(Align::RIGHT), |ui| {
-                        Frame::default().show(ui, |ui| {
-                            ui.set_min_width(24.0);
-                            // ui.set_width(ui.available_width());
-                            ui.set_height(ui.available_height());
-                            ui.label("here's some gui shit");
-                        })
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            egui::TopBottomPanel::bottom("bottom_pane_2").resizable(false).show_separator_line(true).show_animated(self.egui_renderer.context(), self.show_bottom_pane, |ui| {
+                ui.vertical(|ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.allocate_space(vec2(ui.available_width(), 0.0));
+                        self.vram_viewer.draw(ui, &mut self.emulator);
+                        ui.allocate_space(vec2(ui.available_width(), 0.0));
                     });
-
-                    ui.allocate_space(ui.available_size());
                 });
-            }
-        });
+            });
+
+            egui::TopBottomPanel::bottom("bottom_pane_1").resizable(false).show_separator_line(true).show(self.egui_renderer.context(), |ui| {
+                ui.horizontal(|ui| {
+                    ui.toggle_value(&mut self.show_left_pane, "show left panel");
+                    ui.toggle_value(&mut self.show_bottom_pane, "show bottom panel");
+                    ui.toggle_value(&mut self.show_right_pane, "show right panel");
+                });
+            });
+
+            let mut left_size = 0.0;
+            let mut right_size = 0.0;
+
+            egui::SidePanel::left("left_pane").resizable(true).min_width(0.0).show_separator_line(true).frame(Frame {
+                inner_margin: vec2(0.0, 0.0).into(),
+                outer_margin: vec2(0.0, 0.0).into(),
+                fill: Color32::from_gray(24),
+                ..Default::default()
+            }).show_animated(self.egui_renderer.context(), self.show_left_pane, |ui| {
+                left_size = ui.available_width();
+
+                if self.show_left_pane {
+                    self.mem_inspector.draw(ui, &mut self.emulator);
+                }
+            });
+
+            egui::SidePanel::right("right_pane").resizable(true).min_width(0.0).show_separator_line(true).frame(Frame {
+                inner_margin: vec2(0.0, 0.0).into(),
+                outer_margin: vec2(0.0, 0.0).into(),
+                fill: Color32::from_gray(24),
+                ..Default::default()
+            }).show_animated(self.egui_renderer.context(), self.show_right_pane, |ui| {
+                right_size = ui.available_width();
+
+                if self.show_right_pane {
+                    let sa = ScrollArea::both().enable_scrolling(true).min_scrolled_width(0.0).show(ui, |ui| {
+                        ui.with_layout(Layout::top_down_justified(Align::RIGHT), |ui| {
+                            Frame::default().show(ui, |ui| {
+                                ui.set_min_width(24.0);
+                                // ui.set_width(ui.available_width());
+                                ui.set_height(ui.available_height());
+                                ui.label("here's some gui shit");
+                            })
+                        });
+
+                        ui.allocate_space(ui.available_size());
+                    });
+                }
+            });
+        }
 
         egui::CentralPanel::default().frame(frame).show(self.egui_renderer.context(), |ui| {
             // Set the minimum size for the center pane
@@ -194,6 +196,24 @@ impl AppInitialized {
         self.gc.surface_config.height = height;
         self.gc.surface.configure(&self.gc.device, &self.gc.surface_config);
     }
+}
+
+use std::cell::RefCell;
+use wasm_bindgen::prelude::*;
+use crate::PlayState::{Paused, Playing};
+
+// Use `thread_local!` to store per-thread global data in WASM
+thread_local! {
+    static ROM_DATA: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+}
+
+// Function to update the ROM data from JavaScript
+#[wasm_bindgen]
+pub fn update_rom_data(data: &[u8]) {
+    warn!("Loading new ROM into rust memory");
+    ROM_DATA.with(|storage| {
+        *storage.borrow_mut() = Some(data.to_vec());
+    });
 }
 
 impl ApplicationHandler for AppInitialized {
@@ -245,7 +265,16 @@ impl ApplicationHandler for AppInitialized {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // Check if a new ROM is waiting
+        if let Some(data) = &ROM_DATA.take() {
+            warn!("got rom data!");
+            if !data.is_empty() {
+                self.emulator.play_state = Paused;
+                self.emulator.load_rom(data);
+                self.emulator.play_state = Playing;
+            }
+        }
+
         self.emulator.process_cycles(false);
-        // self.window.request_redraw();
     }
 }

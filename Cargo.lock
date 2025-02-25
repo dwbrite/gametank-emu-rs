@@ -1226,6 +1226,8 @@ dependencies = [
  "image",
  "klingt",
  "lab",
+ "lazy_static",
+ "once_cell",
  "petgraph",
  "pollster",
  "rand",

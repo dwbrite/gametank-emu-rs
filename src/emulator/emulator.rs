@@ -49,10 +49,15 @@ pub struct Emulator {
 
 impl Emulator {
     pub(crate) fn load_rom(&mut self, bytes: &[u8]) {
+        warn!("loading new rom from memory, size: {}", bytes.len());
         self.cpu_bus.cartridge = CartridgeType::from_slice(bytes);
+        warn!(" - cartridge loaded from memory");
         self.cpu.reset();
+        warn!(" - cpu reset");
         self.acp.reset();
+        warn!(" - acp reset");
         self.blitter.clear_irq_trigger();
+        warn!(" - blitter irq cleared");
     }
 }
 
