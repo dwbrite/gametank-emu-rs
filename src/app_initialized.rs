@@ -1,4 +1,4 @@
-use std::cell::OnceCell;
+use std::cell::{Cell, OnceCell};
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
@@ -200,11 +200,12 @@ impl AppInitialized {
 
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
-use crate::PlayState::{Paused, Playing};
+use crate::PlayState::{Paused, Playing, WasmInit};
 
 // Use `thread_local!` to store per-thread global data in WASM
 thread_local! {
     static ROM_DATA: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+    static SHOULD_SHUTDOWN: Cell<bool> = Cell::new(false);
 }
 
 // Function to update the ROM data from JavaScript
@@ -214,6 +215,12 @@ pub fn update_rom_data(data: &[u8]) {
     ROM_DATA.with(|storage| {
         *storage.borrow_mut() = Some(data.to_vec());
     });
+}
+
+#[wasm_bindgen]
+pub fn request_close() {
+    warn!("Closing egui");
+    SHOULD_SHUTDOWN.with(|flag| flag.set(true));
 }
 
 impl ApplicationHandler for AppInitialized {
@@ -269,10 +276,12 @@ impl ApplicationHandler for AppInitialized {
         if let Some(data) = &ROM_DATA.take() {
             warn!("got rom data!");
             if !data.is_empty() {
-                self.emulator.play_state = Paused;
                 self.emulator.load_rom(data);
-                self.emulator.play_state = Playing;
             }
+        }
+
+        if SHOULD_SHUTDOWN.with(|flag| flag.get()) {
+            event_loop.exit();
         }
 
         self.emulator.process_cycles(false);

@@ -14,6 +14,19 @@ pub struct GraphicsContext {
 impl GraphicsContext {
     pub async fn new(window: Arc<Window>) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+
+
+        #[cfg(target_arch = "wasm32")]
+        loop {
+            use gloo_timers::future::TimeoutFuture;
+            let size = window.inner_size();
+            if size.width > 0 && size.height > 0 {
+                break;
+            }
+            // Wait one frame (roughly 16ms) before checking again
+            TimeoutFuture::new(16).await;
+        }
+
         let surface = instance.create_surface(window.clone()).unwrap();
 
         let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {

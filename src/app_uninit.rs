@@ -10,6 +10,8 @@ use winit::window::{Window, WindowAttributes, WindowId};
 use egui_wgpu::{wgpu as wgpu, ScreenDescriptor};
 use egui_wgpu::wgpu::{Limits, MemoryHints};
 use tracing::{debug, info, warn};
+use wasm_bindgen::JsCast;
+use web_sys::{Document, HtmlCanvasElement, HtmlElement};
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, DeviceId, KeyEvent, StartCause, WindowEvent};
 use crate::app_initialized::AppInitialized;
@@ -52,26 +54,51 @@ impl App {
         }
     }
 
+    fn get_canvas(document: &Document) -> Option<HtmlCanvasElement> {
+        // First, try to get the canvas from the light DOM.
+        if let Some(elem) = document.get_element_by_id("gt-canvas") {
+            return elem.dyn_into::<HtmlCanvasElement>().ok();
+        }
+
+        // If not found, try to locate the canvas in a shadow DOM.
+        if let Some(shadow_host) = document.get_element_by_id("shadow-host") {
+            if let Some(shadow_root) = shadow_host
+                .dyn_ref::<HtmlElement>()
+                .and_then(|host| host.shadow_root())
+            {
+                if let Ok(Some(canvas_elem)) = shadow_root.query_selector("#gt-canvas") {
+                    return canvas_elem.dyn_into::<HtmlCanvasElement>().ok();
+                }
+            }
+        }
+
+        None
+    }
+
     fn init_window(&mut self, event_loop: &ActiveEventLoop) {
         info!("initializing...");
         #[allow(unused_mut)]
         let mut window_attributes = WindowAttributes::default()
-            .with_title("GameTank: The Emulator! 🦀")
+            .with_title("GameTank: The Emulator!")
             .with_inner_size(LogicalSize::new(1280, 720))
             .with_min_inner_size(LogicalSize::new(WIDTH, HEIGHT));
+        
+        
 
         #[cfg(target_arch = "wasm32")] {
+            window_attributes = window_attributes.with_inner_size(LogicalSize::new(256, 256));
             use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
             use web_sys::{HtmlCanvasElement, HtmlElement};
             use wasm_bindgen::JsCast;
 
             let window = web_sys::window().expect("should have a Window");
             let document = window.document().expect("should have a Document");
-            let canvas = document.get_element_by_id("gt-canvas").expect("should have a canvas element");
-            let canvas: HtmlCanvasElement = canvas.dyn_into::<HtmlCanvasElement>().expect("failed to transmute canvas element");
 
+            let canvas = Self::get_canvas(&document).expect("should have a canvas element");
+
+            let canvas: HtmlCanvasElement = canvas.dyn_into::<HtmlCanvasElement>().expect("failed to transmute canvas element");
+            warn!("found canvas: ({}, {})", canvas.width(), canvas.height());
             window_attributes = window_attributes.with_canvas(Some(canvas));
-            info!("found canvas");
         }
 
 

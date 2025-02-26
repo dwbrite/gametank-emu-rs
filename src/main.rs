@@ -15,7 +15,7 @@ mod emulator;
 
 use app_delegation::DelegatedApp::Uninitialized;
 use std::cmp::PartialEq;
-use tracing::{info, Level};
+use tracing::{error, info, warn, Level};
 use winit::event_loop::EventLoop;
 
 use winit::event_loop::ControlFlow;
@@ -31,6 +31,7 @@ use web_sys::{window, HtmlCanvasElement};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 use std::future::Future;
+use web_sys::Event;
 use crate::app_uninit::App;
 use crate::PlayState::*;
 
@@ -74,7 +75,17 @@ fn setup_logging() {
 pub fn wasm_main() {
     use std::panic;
     use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
-    panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+    panic::set_hook(Box::new(|panic_info| {
+        // Log the panic info to console (using the default hook for formatting)
+        console_error_panic_hook::hook(panic_info);
+        // Dispatch a custom event to notify JS of the panic.
+        if let Some(window) = web_sys::window() {
+            let event = Event::new("wasm-panic").unwrap();
+            window.dispatch_event(&event).unwrap();
+        }
+    }));
+
     setup_logging();
     info!("console logger started.");
 
