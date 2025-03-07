@@ -2,7 +2,7 @@ use std::cell::{Cell, OnceCell};
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
-use egui::{epaint, vec2, Align, Button, Color32, Frame, Id, LayerId, Layout, Pos2, Rect, ResizeDirection, Rounding, ScrollArea, TextureOptions, Ui, UiBuilder, Vec2, ViewportCommand};
+use egui::{epaint, vec2, Align, Button, Color32, Frame, Id, LayerId, Layout, Pos2, Rect, ResizeDirection, ScrollArea, TextureOptions, Ui, UiBuilder, Vec2, ViewportCommand};
 use egui_wgpu::ScreenDescriptor;
 use tracing::{error, info, warn};
 use winit::application::ApplicationHandler;
@@ -84,9 +84,8 @@ impl AppInitialized {
 
         self.egui_renderer.begin_frame(&self.window);
         let frame = egui::Frame {
-            inner_margin: egui::Margin::same(0.0),
-            outer_margin: egui::Margin::same(0.0),
-            rounding: egui::Rounding::same(0.0),
+            inner_margin: egui::Margin::same(0),
+            outer_margin: egui::Margin::same(0),
             shadow: epaint::Shadow::default(),
             ..Default::default()
         };

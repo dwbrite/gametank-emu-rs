@@ -31,6 +31,8 @@ use web_sys::{window, HtmlCanvasElement};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 use std::future::Future;
+
+#[cfg(target_arch = "wasm32")]
 use web_sys::Event;
 use crate::app_uninit::App;
 use crate::PlayState::*;

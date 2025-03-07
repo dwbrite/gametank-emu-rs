@@ -20,10 +20,11 @@ const _TETRIS_GTR: &[u8] = include_bytes!("../roms/tetris.gtr");
 const _BADAPPLE_GTR: &[u8] = include_bytes!("../roms/badapple.gtr");
 const _CUBICLE_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
 const _COLORS: &[u8] = include_bytes!("../roms/colortest.gtr");
+const _CLYDE: &[u8] = include_bytes!("../roms/lotf.gtr");
 
 const _GAME1_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
 
-const CURRENT_GAME: &[u8] = _GAME1_GTR;
+const CURRENT_GAME: &[u8] = _CUBICLE_GTR;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ByteDecorator {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Cursor, Read, Seek};
-use egui::{include_image, vec2, Button, Color32, ColorImage, Context, Frame, ImageOptions, ImageSource, Rect, Rounding, Shadow, SizeHint, Style, TextureHandle, TextureOptions, Ui, Vec2, Widget};
+use egui::{include_image, vec2, Button, Color32, ColorImage, Context, Frame, ImageOptions, ImageSource, Rect, Shadow, SizeHint, Style, TextureHandle, TextureOptions, Ui, Vec2, Widget};
 use egui::load::{SizedTexture, TextureLoadResult, TexturePoll};
 use image::{GenericImageView, ImageFormat};
 use tracing::warn;
@@ -89,7 +89,7 @@ impl GameTankBoyUI {
         textures.insert("power_pressed".into(), power2);
 
         Self {
-            desired_scale: Some(3),
+            desired_scale: Some(6),
             screen: Box::new(game_texture),
             textures
         }
@@ -150,17 +150,18 @@ impl GameTankBoyUI {
                 let frame_color = Color32::from_gray(8); // Light gray color for the frame
                 let game_frame = Frame {
                     inner_margin: vec2(margin_x, margin_y).into(),
-                    rounding: Rounding::same(margin_y),
+                    // rounding: Rounding::same(margin_y),
                     fill: frame_color,
                     outer_margin: vec2(0.0, 0.0).into(),
                     shadow:
                     Shadow {
-                        offset: vec2(0.0, 0.0),
-                        blur: 2.0,
-                        spread: 0.5,
+                        offset: [0, 0],
+                        blur: 2,
+                        spread: 1,
                         color: Color32::from_rgb((c.r() as f32 * 0.4) as u8, (c.g() as f32 * 0.4) as u8, (c.b() as f32 * 0.2) as u8),
                     },
                     stroke: Default::default(),
+                    corner_radius: Default::default(),
                 };
 
                 game_frame.show(ui, |ui| {

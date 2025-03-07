@@ -11,6 +11,8 @@ use egui_wgpu::{wgpu as wgpu, ScreenDescriptor};
 use egui_wgpu::wgpu::{Limits, MemoryHints};
 use tracing::{debug, info, warn};
 use wasm_bindgen::JsCast;
+
+#[cfg(target_arch = "wasm32")]
 use web_sys::{Document, HtmlCanvasElement, HtmlElement};
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, DeviceId, KeyEvent, StartCause, WindowEvent};
@@ -54,6 +56,7 @@ impl App {
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
     fn get_canvas(document: &Document) -> Option<HtmlCanvasElement> {
         // First, try to get the canvas from the light DOM.
         if let Some(elem) = document.get_element_by_id("gt-canvas") {
@@ -86,7 +89,7 @@ impl App {
         
 
         #[cfg(target_arch = "wasm32")] {
-            window_attributes = window_attributes.with_inner_size(LogicalSize::new(256, 256));
+            window_attributes = window_attributes.with_inner_size(LogicalSize::new(128, 128));
             use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
             use web_sys::{HtmlCanvasElement, HtmlElement};
             use wasm_bindgen::JsCast;
@@ -119,8 +122,8 @@ impl App {
 
     fn try_graphics_context(&mut self) {
         if let Some(window) = self.window.as_ref() {
-            if let Ok(mut gc) = self.gc_rx.try_recv() {
-                let device = &mut gc.device;
+            if let Ok(gc) = self.gc_rx.try_recv() {
+                let device = &gc.device;
 
                 let fmt = gc.surface.get_current_texture().expect("ugh").texture.format();
 
