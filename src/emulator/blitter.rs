@@ -56,22 +56,15 @@ impl Blitter {
     }
 
     pub fn cycle(&mut self, bus: &mut CpuBus) {
-        debug!(target: "blitter", "{:?}", self);
-        // 
-        if self.blitting && bus.blitter.start == 1 {
-            warn!("start on blitter after processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
-            // bus.blitter.start = 0;
+        // debug!(target: "blitter", "{:?}", self);
+
+        let (bit_start, start_addressed) = bus.blitter.start.read_once();
+        if start_addressed {
+            self.irq_trigger = false;
         }
 
         // load y at blitter start
-        if !self.blitting && bus.blitter.start != 0 {
-            // self.start_time = Instant::now();
-            warn!("new blit? processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
-            // bus.blitter.start = 0;
-
-
-
-            self.irq_trigger = false;
+        if !self.blitting && bit_start {
             self.src_y = bus.blitter.gy;
             self.dst_y = bus.blitter.vy;
             self.height = bus.blitter.height & 0b01111111;
@@ -110,7 +103,7 @@ impl Blitter {
             self.offset_y = 0;
 
             self.blitting = false;
-            bus.blitter.start = 0;
+            // bus.blitter.start = 0;
             debug!("blit complete, copied {} pixels", self.cycles);
             if bus.system_control.dma_flags.dma_irq() {
                 self.irq_trigger = true;
@@ -132,14 +125,18 @@ impl Blitter {
         let color = if self.color_fill {
             self.color
         } else {
+            // select the page, this makes sense
             let vram_page = bus.system_control.banking_register.vram_page() as usize;
 
+            // ok, src_x and src_y, that makes sense
             let mut src_x_mod = self.src_x;
-
             let mut src_y_mod = self.src_y;
 
-            let mut blit_src_x;
-            let mut blit_src_y;
+            let mut blit_src_x = src_x_mod as usize;
+            let mut blit_src_y = src_y_mod as usize;
+            blit_src_x = (src_x_mod.wrapping_add(self.offset_x)) as usize;
+            blit_src_y = (src_y_mod.wrapping_add(self.offset_y)) as usize;
+
 
             if self.flip_x {
                 src_x_mod = !src_x_mod;
@@ -154,15 +151,21 @@ impl Blitter {
             } else {
                 blit_src_y = (src_y_mod.wrapping_add(self.offset_y)) as usize;
             }
-
+            //
             // if gcarry is turned off, blits should tile 16x16
             if !bus.system_control.dma_flags.dma_gcarry() {
-                blit_src_x = (src_x_mod + self.offset_x % 16) as usize;
-                blit_src_y = (src_y_mod + self.offset_y % 16) as usize;
+                blit_src_x = (src_x_mod - self.offset_x % 16) as usize;
+                blit_src_y = (src_y_mod - self.offset_y % 16) as usize;
             }
-            debug!(target: "blitter", "starting blit pixel, {}x{} at ({}, {})", self.width, self.height, self.dst_x, self.dst_y);
+            let mut quad = 0;
+            if blit_src_x >= 128 {
+                quad += 128*128 - 128;
+            }
+            if blit_src_y >= 128 {
+                quad += 128*128;
+            }
 
-            bus.vram_banks[vram_page][blit_src_x + blit_src_y*128]
+            bus.vram_banks[vram_page][blit_src_x + blit_src_y*128 + quad]
         };
 
         let out_x = wrapping_add(self.dst_x, self.offset_x) as usize;
@@ -184,14 +187,15 @@ impl Blitter {
     }
 
     pub fn instant_blit(&mut self, bus: &mut CpuBus) {
+        // TODO:
         // on blit start, blit until done
-        if !self.blitting && bus.blitter.start != 0 {
-            loop {
-                self.cycle(bus);
-                if !self.blitting {
-                    break;
-                }
-            }
-        }
+        // if !self.blitting && bus.blitter.start != 0 {
+        //     loop {
+        //         self.cycle(bus);
+        //         if !self.blitting {
+        //             break;
+        //         }
+        //     }
+        // }
     }
 }

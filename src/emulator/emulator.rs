@@ -202,6 +202,9 @@ impl Emulator {
             // TODO: instant blit option
 
             let blit_irq = self.blitter.irq_trigger;
+            if blit_irq {
+                warn!("blit irq");
+            }
             self.cpu.set_irq(blit_irq);
 
             self.clock_cycles_to_vblank -= cpu_cycles;

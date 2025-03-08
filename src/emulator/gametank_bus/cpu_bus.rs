@@ -1,7 +1,7 @@
 use w65c02s::{System, W65C02S};
 use rand::{thread_rng, Rng};
 use std::cell::Ref;
-use tracing::warn;
+use tracing::{debug, warn};
 use web_sys::js_sys::Atomics::add;
 use crate::emulator::cartridges::cart2m::Cartridge2M;
 use crate::emulator::cartridges::CartridgeType;
@@ -10,7 +10,7 @@ use crate::emulator::gametank_bus::reg_system_control::*;
 use crate::emulator::gamepad::GamePad;
 use crate::emulator::gametank_bus::ARAM;
 use crate::emulator::gametank_bus::cpu_bus::ByteDecorator::{AudioRam, CpuStack, SystemRam, Unreadable, Vram, ZeroPage};
-use crate::emulator::gametank_bus::reg_blitter::BlitterRegisters;
+use crate::emulator::gametank_bus::reg_blitter::{BlitStart, BlitterRegisters};
 use crate::emulator::gametank_bus::reg_etc::{new_framebuffer, BankingRegister, BlitterFlags, FrameBuffer, GraphicsMemoryMap, SharedFrameBuffer};
 use crate::emulator::gametank_bus::reg_system_control::*;
 
@@ -21,10 +21,10 @@ const _BADAPPLE_GTR: &[u8] = include_bytes!("../roms/badapple.gtr");
 const _CUBICLE_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
 const _COLORS: &[u8] = include_bytes!("../roms/colortest.gtr");
 const _CLYDE: &[u8] = include_bytes!("../roms/lotf.gtr");
-
+const _DUDE: &[u8] = include_bytes!("../roms/dude.gtr");
 const _GAME1_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
 
-const CURRENT_GAME: &[u8] = _CLYDE;
+const CURRENT_GAME: &[u8] = _DUDE;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ByteDecorator {
@@ -80,7 +80,10 @@ impl Default for CpuBus {
                 gy: 0,
                 width: 127,
                 height: 127,
-                start: 0,
+                start: BlitStart {
+                    write: 0,
+                    addressed: false,
+                },
                 color: 0b101_00_000, // offwhite
             },
             ram_banks: Box::new([[0; 0x2000]; 4]),
@@ -128,7 +131,7 @@ impl CpuBus {
                         warn!("Saving is not yet supported");
                     }
                     cartridge.bank_mask = cartridge.bank_shifter as u16; // Update the bank mask
-                    warn!("Flash bank mask set to 0x{:x}", cartridge.bank_mask);
+                    debug!("Flash bank mask set to 0x{:x}", cartridge.bank_mask);
                 }
             },
             _ => {} // do nothing
