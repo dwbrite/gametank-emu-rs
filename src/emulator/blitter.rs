@@ -58,15 +58,19 @@ impl Blitter {
     pub fn cycle(&mut self, bus: &mut CpuBus) {
         debug!(target: "blitter", "{:?}", self);
         // 
-        // if self.blitting && bus.blitter.start == 1 {
-        //     // warn!("start on blitter after processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
-        //     // bus.blitter.start = 0;
-        // }
+        if self.blitting && bus.blitter.start == 1 {
+            warn!("start on blitter after processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
+            // bus.blitter.start = 0;
+        }
 
         // load y at blitter start
         if !self.blitting && bus.blitter.start != 0 {
             // self.start_time = Instant::now();
+            warn!("new blit? processing {} pixels: \n current blitter {:?}\nupdated register {:?}", self.cycles, self, bus.blitter);
             // bus.blitter.start = 0;
+
+
+
             self.irq_trigger = false;
             self.src_y = bus.blitter.gy;
             self.dst_y = bus.blitter.vy;

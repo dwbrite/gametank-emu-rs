@@ -15,7 +15,8 @@ pub struct GraphicsContext {
 
 impl GraphicsContext {
     pub async fn new(window: Arc<Window>) -> Self {
-        #[cfg(target_arch = "wasm32")]        
+        // force webgl on web
+        #[cfg(target_arch = "wasm32")]
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::GL,
             flags: Default::default(),

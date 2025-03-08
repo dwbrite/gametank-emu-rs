@@ -269,7 +269,7 @@ impl Emulator {
 
         if self.cpu_bus.vblank_nmi_enabled() {
             self.cpu.set_nmi(true);
-            // warn!("vblanked");
+            warn!("vblanked");
         }
     }
 

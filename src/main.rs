@@ -53,7 +53,7 @@ fn setup_logging() {
 
         // Set up the WASM layer for tracing logs
         let wlconfig = WASMLayerConfigBuilder::new()
-            .set_max_level(Level::WARN).build();
+            .set_max_level(Level::DEBUG).build();
 
         let wasm_layer = WASMLayer::new(wlconfig);
         // Configure the subscriber with the WASM layer
