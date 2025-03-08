@@ -179,7 +179,7 @@ impl AppInitialized {
         let mut pixels: Vec<u8> = Vec::with_capacity(128 * 128 * 4); // 4 channels per pixel (RGBA)
 
         for &index in framebuffer.iter() {
-            let (r, g, b, a) = COLOR_MAP[index.wrapping_sub(32) as usize];
+            let (r, g, b, a) = COLOR_MAP[index as usize];
             pixels.push(r);
             pixels.push(g);
             pixels.push(b);

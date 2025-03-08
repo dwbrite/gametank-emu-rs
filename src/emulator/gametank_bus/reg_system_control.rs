@@ -1,4 +1,4 @@
-use tracing::warn;
+use tracing::{debug, warn};
 use crate::emulator::gamepad::GamePad;
 use crate::emulator::gametank_bus::reg_etc::{BankingRegister, BlitterFlags, GraphicsMemoryMap};
 
@@ -85,7 +85,7 @@ impl SystemControl {
             0x2000 => { self.reset_acp = data }
             0x2001 => { self.nmi_acp = data }
             0x2005 => {
-                warn!("setting banking register to {:08b}", data);
+                debug!("setting banking register to {:08b}", data);
                 self.banking_register.0 = data
             }
             0x2006 => { self.audio_enable_sample_rate = data }

@@ -203,7 +203,7 @@ impl Emulator {
 
             let blit_irq = self.blitter.irq_trigger;
             if blit_irq {
-                warn!("blit irq");
+                debug!("blit irq");
             }
             self.cpu.set_irq(blit_irq);
 
@@ -272,7 +272,7 @@ impl Emulator {
 
         if self.cpu_bus.vblank_nmi_enabled() {
             self.cpu.set_nmi(true);
-            warn!("vblanked");
+            debug!("vblanked");
         }
     }
 

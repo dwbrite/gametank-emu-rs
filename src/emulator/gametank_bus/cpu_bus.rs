@@ -24,7 +24,7 @@ const _CLYDE: &[u8] = include_bytes!("../roms/lotf.gtr");
 const _DUDE: &[u8] = include_bytes!("../roms/dude.gtr");
 const _GAME1_GTR: &[u8] = include_bytes!("../roms/cubicle.gtr");
 
-const CURRENT_GAME: &[u8] = _DUDE;
+const CURRENT_GAME: &[u8] = _CLYDE;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ByteDecorator {
