@@ -62,8 +62,8 @@ jobs:
           files: |
             web/bin/gametank-emu-rs.js
             web/bin/gametank-emu-rs_bg.wasm
-          tag_name: main-${{ env.sha_short }}
-          release_name: "Main Build (${{ env.sha_short }})"
+          tag_name: ${{ env.sha_short }}
+          release_name: "Build (${{ env.sha_short }})"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
