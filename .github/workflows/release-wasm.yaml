@@ -39,22 +39,30 @@ jobs:
       - name: Just Build WASM
         run: just build-wasm
 
-      - name: Package Artifact
-        run: tar -czvf wasm-build.tar.gz -C web/bin .
+      - name: Get Commit Hash
+        id: commit
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Upload to GitHub Releases
+      - name: Upload to GitHub Releases (Tagged Release)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: wasm-build.tar.gz
+          files: |
+            web/bin/gametank-emu-rs.js
+            web/bin/gametank-emu-rs_bg.wasm
+          tag_name: ${{ github.ref_name }}-${{ env.sha_short }}
+          release_name: "Release ${{ github.ref_name }} (${{ env.sha_short }})"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
       - name: Upload "latest" release on master push
         if: github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          files: wasm-build.tar.gz
+          files: |
+            web/bin/gametank-emu-rs.js
+            web/bin/gametank-emu-rs_bg.wasm
           tag_name: latest
           release_name: "Latest Build"
           prerelease: true
