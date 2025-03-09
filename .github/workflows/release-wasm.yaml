@@ -43,18 +43,29 @@ jobs:
         id: commit
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Upload to GitHub Releases (Tagged Release)
+      - name: Upload Release for Tags
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             web/bin/gametank-emu-rs.js
             web/bin/gametank-emu-rs_bg.wasm
-          tag_name: ${{ github.ref_name }}-${{ env.sha_short }}
-          release_name: "Release ${{ github.ref_name }} (${{ env.sha_short }})"
+          tag_name: ${{ github.ref_name }}
+          release_name: "Release ${{ github.ref_name }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload Commit-Based Release for Main
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            web/bin/gametank-emu-rs.js
+            web/bin/gametank-emu-rs_bg.wasm
+          tag_name: main-${{ env.sha_short }}
+          release_name: "Main Build (${{ env.sha_short }})"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload "latest" release on master push
         if: github.ref == 'refs/heads/master'
