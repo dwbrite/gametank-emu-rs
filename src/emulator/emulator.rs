@@ -5,8 +5,13 @@ use tracing::{debug, error, warn};
 use w65c02s::State::AwaitingInterrupt;
 use winit::event::ElementState;
 use std::fmt::{Debug, Formatter};
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+use bytemuck::bytes_of;
 use crate::emulator::audio_output::GameTankAudio;
 use crate::emulator::blitter::Blitter;
+use crate::emulator::cartridges::CartridgeType;
 use crate::emulator::gametank_bus::{AcpBus, Bus, CpuBus};
 use crate::helpers::get_now_ms;
 use crate::input::ControllerButton::{Down, Left, Right, Start, Up, A, B, C};
@@ -40,6 +45,15 @@ pub struct Emulator {
     // TODO: move bindings out of emulator
     pub input_bindings: HashMap<Key, InputCommand>,
     pub input_state: HashMap<InputCommand, KeyState>
+}
+
+impl Emulator {
+    pub(crate) fn load_rom(&mut self, bytes: &[u8]) {
+        self.cpu_bus.cartridge = CartridgeType::from_slice(bytes);
+        self.cpu.reset();
+        self.acp.reset();
+        self.blitter.reset();
+    }
 }
 
 impl Debug for Emulator {
